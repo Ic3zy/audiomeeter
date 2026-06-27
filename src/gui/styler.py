@@ -1,6 +1,7 @@
 from PySide6.QtCore import QObject, QFileSystemWatcher
 from pathlib import Path
 
+_styler_instance = None
 
 # For developers
 class Hot_Reloader(QObject):
@@ -36,6 +37,7 @@ class Hot_Reloader(QObject):
         for file_path in styles_dir.iterdir():
             if file_path.is_file() and file_path.suffix in ['.qss', '.css']:
                 path_str = str(file_path)
+                print(f"path_str: {path_str}")
                 self._path_to_name[path_str] = file_path.stem
                 self.watcher.addPath(path_str)
 
@@ -47,6 +49,7 @@ class Hot_Reloader(QObject):
             print(f"error reading file: {path}")
 
     def on_file_changed(self, path):
+        print(f"on_file_changed: {path}")
         self.watcher.addPath(path)
         
         name = self.get_style_name(path)
@@ -64,10 +67,16 @@ class Hot_Reloader(QObject):
 
 class Styler:
     def __init__(self, styles_path="src/assets/styles"):
+        global _styler_instance
         self.styles_path = styles_path
         self.style_sheets = {}
         self.load_styles()
         self.hot_reloader = Hot_Reloader(styles_path)
+        _styler_instance = self
+
+    @classmethod
+    def instance(cls):
+        return _styler_instance
 
     def __repr__(self):
         return f"Styler(styles_path={self.styles_path}, top_styles={len(self.style_sheets)})"
@@ -84,6 +93,9 @@ class Styler:
 
     def set_style(self, name, qt_object):
         current_style = self.style_sheets.get(name, "")
+        if current_style is None:
+            raise ValueError(f"Style not found: {name}")
+        
         self.hot_reloader.add_style(name, qt_object, current_style)
 
     def __getitem__(self, key):
@@ -94,3 +106,4 @@ class Styler:
 
     def __delitem__(self, key):
         del self.style_sheets[key]
+

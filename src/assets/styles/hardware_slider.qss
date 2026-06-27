@@ -4,7 +4,7 @@ QSlider::groove:vertical {
     height: 220px;
     width: 15px;
     border: 1px solid #71c49a;
-    border-radius: 7.5px;
+    border-radius: 7px;
 }
 
 /* The moving knob/handle of the slider */
@@ -25,5 +25,5 @@ QSlider::handle:vertical:hover {
 /* The filled/active colored area below the slider knob */
 QSlider::add-page:vertical {
     background: #71c49a;
-    border-radius: 7.5px;
+    border-radius: 7px;
 }

@@ -1,27 +1,30 @@
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QSlider, QLabel, QPushButton
-from PySide6.QtCore import Qt
+from .widgets import Mic_slider, Hardware_slider, Circle_slider, ToggleButton, Right_ToggleButtons
 from .styler import Styler
 
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.Styler = Styler()
-
+        self.styler = Styler()
         self.setWindowTitle("Audiomeeter")
         self.setFixedSize(900, 545)
-        self.setStyleSheet("background-color: rgb(255, 255, 255);")
+        self.setStyleSheet("background-color: #2f4050;")
         
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
         
         self.layout = QVBoxLayout(self.central_widget)
-        
-        self.debug_slider = QSlider(Qt.Orientation.Vertical)
-        self.Styler.set_style("slider", self.debug_slider)
-        self.debug_slider.setMinimumWidth(120)
+        self.layout.addWidget(Mic_slider())
 
-        self.layout.addWidget(self.debug_slider)
+        self.layout.addWidget(ToggleButton())
+        self.layout.addWidget(Right_ToggleButtons())
+        # self.layout.addWidget(Hardware_slider())
+
+        # self.layout.addWidget(Circle_slider())
+
+
+
 
 
 # DEBUG

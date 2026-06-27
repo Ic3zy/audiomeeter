@@ -1,0 +1,15 @@
+ToggleButton {
+    qproperty-btnWidth: 75;
+    qproperty-btnHeight: 32;
+    qproperty-fontSize: 10;
+
+    qproperty-bgColor: #2c3d4d;         
+    
+    qproperty-outlineOff: #5e7587;      
+    qproperty-outlineOn: #6ec397;       
+    
+    qproperty-textOff: #a0a0a0;         
+    qproperty-textOn: #ffffff;          
+    
+    border: none;                       
+}

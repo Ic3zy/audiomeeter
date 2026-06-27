@@ -1,0 +1,7 @@
+Circle_slider {
+    background-color: #4a6173;
+    selection-background-color: #d0d0d2;
+    outline-color: #d0d0d2;
+    color: #ffffff;
+    border: none;                        
+}
