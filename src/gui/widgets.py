@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QSizePolicy, QStyleOption
 )
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush
-from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent
+from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent, QRect
 
 from .styler import Styler
 import math
@@ -131,17 +131,18 @@ class Hardware_slider(Slider):
 class Circle_slider(QSlider):
     valueChanged = Signal(int)
 
-    def __init__(self, min_val=-120, max_val=120, default_val=0, parent=None):
+    def __init__(self, min_val=-120, max_val=120, default_val=0, parent=None, in_circle_text=True):
         super().__init__(parent)
         self.min_val = min_val
         self.max_val = max_val
+        self.in_circle_text = in_circle_text
+
         self.current_value = default_val
         
         self.start_mouse_y = 0
         self.start_value = 0
         self.total_pixels_to_traverse = 200.0 
         
-        # --- YENİ: QSS'ten tek bir değişkenle yönetilecek varsayılan boyut ---
         self._slider_size = 100
         self.setFixedSize(self._slider_size, self._slider_size)
 
@@ -149,10 +150,8 @@ class Circle_slider(QSlider):
         if styler_instance is None:
             raise ValueError("Styler instance not found.")
         
-        # Styler üzerinden QSS yükleme entegrasyonu
         styler_instance.set_style("circle_slider", self)
 
-    # --- YENİ: Tek Değişkenle Boyut Değiştiren Property ---
     @Property(int)
     def sliderSize(self):
         return self._slider_size
@@ -160,7 +159,6 @@ class Circle_slider(QSlider):
     @sliderSize.setter
     def sliderSize(self, size):
         self._slider_size = size
-        # Widget'ı pürüzsüz çizim için tam bir kare formuna sokuyoruz
         self.setFixedSize(size, size)
         self.update()
 
@@ -183,12 +181,17 @@ class Circle_slider(QSlider):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        if self.current_value != 0:
+            value_color = QColor("#71c49a")
+        else:
+            value_color = QColor("#607a89")
+
 
         palette = self.palette()
-        bg_color = palette.color(self.backgroundRole())
+        bg_color = value_color
         active_color = palette.color(self.palette().ColorRole.Highlight)
 
-        # Değişiklik: Artık sabit genişlik/yükseklik yerine QSS'ten gelen dinamik boyuta göre çiziyor
         width, height = self.width(), self.height()
         size = min(width, height) - 22 
         cx, cy = width // 2, height // 2
@@ -225,11 +228,12 @@ class Circle_slider(QSlider):
             knob_radius * 2
         )
 
-        text_color = palette.color(self.palette().ColorRole.WindowText)
-        painter.setPen(QPen(text_color))
-        painter.setFont(QFont("Arial", 7, QFont.Weight.Bold))
-        text = f"{self.current_value/10:.1f}"
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
+        if self.in_circle_text:
+            text_color = palette.color(self.palette().ColorRole.WindowText)
+            painter.setPen(QPen(text_color))
+            painter.setFont(QFont("Arial", 7, QFont.Weight.Bold))
+            text = f"{self.current_value/10:.1f}"
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -518,7 +522,7 @@ class CompGate(QWidget):
 
 
 class Slider_buttons_div(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, disable_led=False):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.setFixedHeight(255)
@@ -526,9 +530,12 @@ class Slider_buttons_div(QWidget):
 
         self.r_toggle = Right_ToggleButtons()
         self.mic_slider = Mic_slider()
-        self.led_vol_meter = LEDVolumeMeter()
 
-        self.layout.addWidget(self.led_vol_meter)
+        if not disable_led:
+            self.led_vol_meter = LEDVolumeMeter()
+
+            self.layout.addWidget(self.led_vol_meter)
+
         self.layout.addWidget(self.mic_slider)
         self.layout.addWidget(self.r_toggle, alignment=Qt.AlignmentFlag.AlignBottom)
 
@@ -553,6 +560,121 @@ class Mic_pannel(QWidget):
         self.layout.addWidget(self.m1)
         self.layout.addWidget(self.m2)
         self.layout.addWidget(self.m3)
+
+
+# ---- virtual inputs ----
+class Equalizer(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(130, 150)
+        
+        self.treble = Circle_slider(in_circle_text=False)
+        self.mid = Circle_slider(in_circle_text=False)
+        self.bass = Circle_slider(in_circle_text=False)
+
+        for pot in [self.treble, self.mid, self.bass]:
+            pot.sliderSize = 42
+            pot.setParent(self)
+
+        self.treble.move(15, 30)
+        self.mid.move(45, 65)
+        self.bass.move(15, 100)
+
+        self.treble.valueChanged.connect(self.update)
+        self.mid.valueChanged.connect(self.update)
+        self.bass.valueChanged.connect(self.update)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        painter.setPen(QPen(QColor("#5b7a8c"))) 
+        painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        painter.drawText(QRect(0, 5, self.width(), 40), Qt.AlignmentFlag.AlignCenter, "EQUALIZER")
+
+        font_label = QFont("Arial", 8, QFont.Weight.Bold)
+        font_value = QFont("Arial", 13, QFont.Weight.Bold)
+
+        painter.setFont(font_label)
+        painter.setPen(QPen(QColor("#4e616c")))
+        painter.drawText(75, 46, "Treble")
+        
+        if self.treble.value() < 0:
+            value_color = QColor("#71c49a")
+        elif self.treble.value() > 0:
+            value_color = QColor("#ff5533")
+        else:
+            value_color = QColor("#607a89")
+
+        painter.setFont(font_value)
+        painter.setPen(QPen(value_color))
+        treble_val = f"{self.treble.value() / 10:.1f}"
+        painter.drawText(75, 66, treble_val)
+
+        if self.mid.value() < 0:
+            value_color = QColor("#71c49a")
+        elif self.mid.value() > 0:
+            value_color = QColor("#ff5533")
+        else:
+            value_color = QColor("#607a89")
+
+        painter.setFont(font_value)
+        painter.setPen(QPen(value_color))
+        mid_val = f"{self.mid.value() / 10:.1f}"
+        print(len(mid_val))
+        if len(mid_val) >= 4:
+            pos = 15
+        else:
+            pos = 25
+        painter.drawText(pos, 100, mid_val)
+
+        bass_current = self.bass.value() / 10
+        
+        if self.bass.value() < 0:
+            value_color = QColor("#71c49a")
+        elif self.bass.value() > 0:
+            value_color = QColor("#ff5533")
+        else:
+            value_color = QColor("#607a89")
+
+        painter.setFont(font_value)
+        painter.setPen(QPen(value_color))
+        painter.drawText(75, 135, f"{bass_current:.1f}")
+
+        painter.setFont(font_label)
+        painter.setPen(QPen(QColor("#4e616c")))
+        painter.drawText(75, 150, "Bass")
+
+class Rl_Slider(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(50, 50)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        
+        bg_color = "#132029"
+        
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(bg_color))
+        painter.drawRect(self.rect())
+
+
+class Virtual_input(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.setFixedHeight(465)
+
+        self.eq = Equalizer()
+        self.rl = Rl_Slider()
+        self.sliders_container = Slider_buttons_div(disable_led=True)
+
+        self.layout.addWidget(self.eq)
+        self.layout.addWidget(self.rl)
+        self.layout.addWidget(self.sliders_container)
+
 
 class TitleBar(QWidget):
     def __init__(self, parent=None):
