@@ -18,11 +18,9 @@ class Window(QMainWindow):
         self.layout = QVBoxLayout(self.central_widget)
         
         self.debug_slider = QSlider(Qt.Orientation.Vertical)
-        self.debug_slider.setStyleSheet(self.Styler["slider"])
-        self.Styler.add_hot_reloadable("slider", self.debug_slider)
+        self.Styler.set_style("slider", self.debug_slider)
         self.debug_slider.setMinimumWidth(120)
 
-        self.layout.addWidget(self.debug_label)
         self.layout.addWidget(self.debug_slider)
 
 

@@ -1,6 +1,8 @@
 from PySide6.QtCore import QObject, QFileSystemWatcher
 from pathlib import Path
 
+
+# For developers
 class Hot_Reloader(QObject):
     def __init__(self, src_path="src/assets/styles"):
         super().__init__()
@@ -80,7 +82,7 @@ class Styler:
                 with open(file_path, "r", encoding="utf-8") as f:
                     self.style_sheets[file_path.stem] = f.read()
 
-    def add_hot_reloadable(self, name, qt_object):
+    def set_style(self, name, qt_object):
         current_style = self.style_sheets.get(name, "")
         self.hot_reloader.add_style(name, qt_object, current_style)
 
