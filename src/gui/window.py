@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QSlider, QLabel, QPushButton
-from .widgets import Mic_slider, Hardware_slider, Circle_slider, ToggleButton, Right_ToggleButtons
+from .widgets import Mic_slider, Hardware_slider, Circle_slider, ToggleButton, Right_ToggleButtons, Slider_buttons_div
 from .styler import Styler
 
 class Window(QMainWindow):
@@ -17,8 +17,7 @@ class Window(QMainWindow):
         self.layout = QVBoxLayout(self.central_widget)
         self.layout.addWidget(Mic_slider())
 
-        self.layout.addWidget(ToggleButton())
-        self.layout.addWidget(Right_ToggleButtons())
+        self.layout.addWidget(Slider_buttons_div())
         # self.layout.addWidget(Hardware_slider())
 
         # self.layout.addWidget(Circle_slider())

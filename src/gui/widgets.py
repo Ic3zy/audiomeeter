@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QSlider, QStyleOptionSlider, QStyle, QWidget, QAbstractButton, QVBoxLayout, QSizePolicy
+from PySide6.QtWidgets import QSlider, QStyleOptionSlider, QStyle, QWidget, QAbstractButton, QVBoxLayout, QHBoxLayout, QSizePolicy
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush
 from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent
 
@@ -117,16 +117,30 @@ class Circle_slider(QSlider):
         
         self.start_mouse_y = 0
         self.start_value = 0
-        
         self.total_pixels_to_traverse = 200.0 
         
-        self.setMinimumSize(100, 100)
+        # --- YENİ: QSS'ten tek bir değişkenle yönetilecek varsayılan boyut ---
+        self._slider_size = 100
+        self.setFixedSize(self._slider_size, self._slider_size)
 
         styler_instance = Styler.instance()
         if styler_instance is None:
             raise ValueError("Styler instance not found.")
         
-        self.setStyleSheet(styler_instance["circle_slider"])
+        # Styler üzerinden QSS yükleme entegrasyonu
+        styler_instance.set_style("circle_slider", self)
+
+    # --- YENİ: Tek Değişkenle Boyut Değiştiren Property ---
+    @Property(int)
+    def sliderSize(self):
+        return self._slider_size
+
+    @sliderSize.setter
+    def sliderSize(self, size):
+        self._slider_size = size
+        # Widget'ı pürüzsüz çizim için tam bir kare formuna sokuyoruz
+        self.setFixedSize(size, size)
+        self.update()
 
     def value(self):
         return self.current_value
@@ -152,6 +166,7 @@ class Circle_slider(QSlider):
         bg_color = palette.color(self.backgroundRole())
         active_color = palette.color(self.palette().ColorRole.Highlight)
 
+        # Değişiklik: Artık sabit genişlik/yükseklik yerine QSS'ten gelen dinamik boyuta göre çiziyor
         width, height = self.width(), self.height()
         size = min(width, height) - 22 
         cx, cy = width // 2, height // 2
@@ -169,7 +184,6 @@ class Circle_slider(QSlider):
         
         span_angle_deg = percentage * 300
 
-
         knob_angle_deg = 90 - span_angle_deg - 211
         knob_angle_rad = math.radians(knob_angle_deg)
 
@@ -177,7 +191,6 @@ class Circle_slider(QSlider):
 
         knob_cx = cx + knob_radius_offset * math.cos(knob_angle_rad)
         knob_cy = cy - knob_radius_offset * math.sin(knob_angle_rad)
-
 
         knob_radius = 4
         painter.setPen(Qt.PenStyle.NoPen)
@@ -220,7 +233,7 @@ class Circle_slider(QSlider):
         if event.button() == Qt.MouseButton.LeftButton:
             self.releaseMouse()
 
-
+            
 # ---- togle button ----
 class ToggleButton(QAbstractButton):
     stateChanged = Signal(bool)
@@ -314,9 +327,9 @@ class ToggleButton(QAbstractButton):
 
         current_text_color = self._text_on if self.isChecked() else self._text_off
 
-        border_width = 2
+        border_width = 1.5
         rect = self.rect().adjusted(border_width//2, border_width//2, -border_width//2, -border_width//2)
-        radius = rect.height() / 4
+        radius = rect.height() / 3
 
         pen = QPen(current_outline, border_width)
         painter.setPen(pen)
@@ -358,6 +371,7 @@ class Right_ToggleButtons(QWidget):
             "Mute"
         ]
         self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(2)
         self.create()
     
     def addWidget(self, widget):
@@ -365,7 +379,7 @@ class Right_ToggleButtons(QWidget):
 
     def create_object(self, text):
         if text == "air":
-            return Air(15)
+            return Air(4)
         else:
             return ToggleButton(text)
 
@@ -373,4 +387,106 @@ class Right_ToggleButtons(QWidget):
         for text in self.map:
             btn = self.create_object(text)
             self.addWidget(btn)
+
+
+class LEDVolumeMeter(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self._meter_width = 32
+        self._meter_height = 220
+        self.total_blocks = 40 
+        
+        self.current_value = 0.4 
+        
+        self.setFixedSize(self._meter_width, self._meter_height)
+
+        self._bg_panel = QColor("#161d20")
+        self._border_panel = QColor("#222b2f")
+        
+        self._led_empty_low = QColor("#1a2222")
+        self._led_empty_mid = QColor("#22281a") 
+        self._led_empty_high = QColor("#2b1a1a") 
+
+        self._led_full_low = QColor("#5b7a8c")
+        self._led_full_mid = QColor("#4ade80")
+        self._led_full_high = QColor("#ef4444")
+
+        styler_instance = Styler.instance()
+        if styler_instance:
+            styler_instance.set_style("volume_meter", self)
+
+    def setValue(self, val):
+        self.current_value = max(0.0, min(1.0, val))
+        self.update()
+
+    @Property(int)
+    def meterWidth(self): return self._meter_width
+    @meterWidth.setter
+    def meterWidth(self, w):
+        self._meter_width = w
+        self.setFixedSize(self._meter_width, self._meter_height)
+        self.update()
+
+    @Property(int)
+    def meterHeight(self): return self._meter_height
+    @meterHeight.setter
+    def meterHeight(self, h):
+        self._meter_height = h
+        self.setFixedSize(self._meter_width, self._meter_height)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        panel_rect = self.rect()
+        painter.setPen(QPen(self._border_panel, 1.5))
+        painter.setBrush(QBrush(self._bg_panel))
+        painter.drawRoundedRect(panel_rect.adjusted(1, 1, -1, -1), 4, 4)
+
+        pad_left, pad_top, pad_right, pad_bottom = 4, 6, 4, 6
+        inner_w = self.width() - (pad_left + pad_right)
+        inner_h = self.height() - (pad_top + pad_bottom)
+        
+        col_w = (inner_w - 1) // 2 
+
+        block_gap = 1
+        block_h = (inner_h - (block_gap * (self.total_blocks - 1))) / self.total_blocks
+
+        active_blocks_count = int(self.current_value * self.total_blocks)
+
+        for i in range(self.total_blocks):
+            y_pos = pad_top + inner_h - ((i + 1) * block_h + i * block_gap)
+            
+            progress_ratio = i / self.total_blocks
+            
+            if progress_ratio < 0.65:
+                color_empty, color_full = self._led_empty_low, self._led_full_low
+            elif progress_ratio < 0.85:
+                color_empty, color_full = self._led_empty_mid, self._led_full_mid
+            else:
+                color_empty, color_full = self._led_empty_high, self._led_full_high
+
+            is_active = i < active_blocks_count
+            current_led_color = color_full if is_active else color_empty
+
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(current_led_color))
+
+            painter.drawRect(pad_left, int(y_pos), col_w, int(block_h))
+            painter.drawRect(pad_left + col_w + 1, int(y_pos), col_w, int(block_h))
+
+
+
+class Slider_buttons_div(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(2)
+        self.layout.addWidget(LEDVolumeMeter())
+        self.layout.addWidget(Mic_slider())
+        self.layout.addWidget(Right_ToggleButtons())
+
+
 

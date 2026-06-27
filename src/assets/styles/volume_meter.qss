@@ -1,0 +1,7 @@
+LEDVolumeMeter {
+    qproperty-meterWidth: 30;
+    qproperty-meterHeight: 220;
+
+    background-color: #12181a; 
+    border-color: #20282b;
+}
