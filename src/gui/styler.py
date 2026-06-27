@@ -29,8 +29,7 @@ class Hot_Reloader(QObject):
         styles_dir = Path(self.styles_path)
         
         if not styles_dir.exists():
-            print(f"Uyarı: {self.styles_path} dizini bulunamadı!")
-            return
+            raise FileNotFoundError(f"Styles directory not found: {styles_dir}")
 
         for file_path in styles_dir.iterdir():
             if file_path.is_file() and file_path.suffix in ['.qss', '.css']:
