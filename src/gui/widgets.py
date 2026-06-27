@@ -1,9 +1,30 @@
-from PySide6.QtWidgets import QSlider, QStyleOptionSlider, QStyle, QWidget, QAbstractButton, QVBoxLayout, QHBoxLayout, QSizePolicy
+from PySide6.QtWidgets import (
+    QSlider, QStyleOptionSlider,
+    QStyle, QWidget, QAbstractButton,
+    QVBoxLayout, QHBoxLayout, QSizePolicy, QStyleOption
+)
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush
 from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent
 
 from .styler import Styler
 import math
+
+
+# TODO: replace real IntelliPannel
+class IntelliPannel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(120)
+        self.setFixedWidth(140)
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        
+        bg_color = "#132029"
+        
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(bg_color))
+        painter.drawRect(self.rect())
 
 
 # ----- sliders -----
@@ -15,6 +36,7 @@ class Slider(QSlider):
 
         self.setup_slider()
 
+
     def setup_slider(self):
         styler_instance = Styler.instance()
         if styler_instance is None:
@@ -23,9 +45,10 @@ class Slider(QSlider):
         self.setMinimum(-60)
         self.setMaximum(12)
         self.setValue(0)
-
+        self.setFixedHeight(245)
         if self.style_name is not None:
             styler_instance.set_style(self.style_name, self)
+            
         opt = QStyleOptionSlider()
         self.initStyleOption(opt)
 
@@ -105,7 +128,6 @@ class Hardware_slider(Slider):
         super().__init__("hardware_slider")
 
 
-
 class Circle_slider(QSlider):
     valueChanged = Signal(int)
 
@@ -172,7 +194,7 @@ class Circle_slider(QSlider):
         cx, cy = width // 2, height // 2
         radius = size // 2
 
-        line_width = 6
+        line_width = 2
 
         bg_pen = QPen(bg_color, line_width)
         bg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -187,12 +209,12 @@ class Circle_slider(QSlider):
         knob_angle_deg = 90 - span_angle_deg - 211
         knob_angle_rad = math.radians(knob_angle_deg)
 
-        knob_radius_offset = radius - 10
+        knob_radius_offset = radius - 7
 
         knob_cx = cx + knob_radius_offset * math.cos(knob_angle_rad)
         knob_cy = cy - knob_radius_offset * math.sin(knob_angle_rad)
 
-        knob_radius = 4
+        knob_radius = 3
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(active_color)  
         
@@ -205,7 +227,7 @@ class Circle_slider(QSlider):
 
         text_color = palette.color(self.palette().ColorRole.WindowText)
         painter.setPen(QPen(text_color))
-        painter.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        painter.setFont(QFont("Arial", 7, QFont.Weight.Bold))
         text = f"{self.current_value/10:.1f}"
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
 
@@ -370,6 +392,7 @@ class Right_ToggleButtons(QWidget):
             "Solo",
             "Mute"
         ]
+        self.setFixedHeight(240)
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(2)
         self.create()
@@ -397,7 +420,7 @@ class LEDVolumeMeter(QWidget):
         self._meter_height = 220
         self.total_blocks = 40 
         
-        self.current_value = 0.4 
+        self.current_value = 0.0
         
         self.setFixedSize(self._meter_width, self._meter_height)
 
@@ -478,15 +501,71 @@ class LEDVolumeMeter(QWidget):
             painter.drawRect(pad_left + col_w + 1, int(y_pos), col_w, int(block_h))
 
 
+class CompGate(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(2)
+
+        self.comp = Circle_slider()
+        self.gate = Circle_slider()
+
+        self.layout.addWidget(self.comp)
+        self.layout.addWidget(self.gate)
+
+        self.setFixedWidth(120)
+        self.setFixedHeight(70)
+
 
 class Slider_buttons_div(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
+        self.setFixedHeight(255)
         self.layout.setSpacing(2)
-        self.layout.addWidget(LEDVolumeMeter())
-        self.layout.addWidget(Mic_slider())
-        self.layout.addWidget(Right_ToggleButtons())
+
+        self.r_toggle = Right_ToggleButtons()
+        self.mic_slider = Mic_slider()
+        self.led_vol_meter = LEDVolumeMeter()
+
+        self.layout.addWidget(self.led_vol_meter)
+        self.layout.addWidget(self.mic_slider)
+        self.layout.addWidget(self.r_toggle, alignment=Qt.AlignmentFlag.AlignBottom)
 
 
+class Mic_container(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.addWidget(IntelliPannel())
+        self.layout.addWidget(CompGate())
+        self.layout.addWidget(Slider_buttons_div())
 
+class Mic_pannel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.m1 = Mic_container()
+        self.m2 = Mic_container()
+        self.m3 = Mic_container()
+        self.layout.addWidget(self.m1)
+        self.layout.addWidget(self.m2)
+        self.layout.addWidget(self.m3)
+
+class TitleBar(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setFixedHeight(80)
+        self.setFixedWidth(900)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        
+        bg_color = "#36495a"
+        
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(bg_color))
+        painter.drawRect(self.rect())
