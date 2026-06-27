@@ -15,7 +15,7 @@ class IntelliPannel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(120)
-        self.setFixedWidth(140)
+        self.setFixedWidth(120)
     
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -33,9 +33,7 @@ class Slider(QSlider):
         super().__init__(Qt.Orientation.Vertical)
         self.style_name = style_name
         self.status_change_callbacks = []
-
         self.setup_slider()
-
 
     def setup_slider(self):
         styler_instance = Styler.instance()
@@ -46,6 +44,7 @@ class Slider(QSlider):
         self.setMaximum(12)
         self.setValue(0)
         self.setFixedHeight(245)
+        
         if self.style_name is not None:
             styler_instance.set_style(self.style_name, self)
             
@@ -60,15 +59,27 @@ class Slider(QSlider):
         )
 
         self.setMinimumWidth(knob_rect.width())
-
         self.valueChanged.connect(self.on_slider_value_changed)
+        
+        self.update_background_color(self.value())
 
     def add_status_change_callback(self, callback):
         if callback in self.status_change_callbacks:
             raise ValueError(f"Callback already added: {callback}")
-        
         self.status_change_callbacks.append(callback)
 
+    def update_background_color(self, value):
+        new_color = "#ff5533" if value > 0 else "#71c49a"
+        
+        old_color = "#71c49a" if value > 0 else "#ff5533"
+        
+        current_qss = self.styleSheet()
+        
+        if current_qss:
+            updated_qss = current_qss.replace(old_color, new_color)
+            
+            if updated_qss != current_qss:
+                self.setStyleSheet(updated_qss)
 
     def on_slider_value_changed(self, value):
         if self.status_change_callbacks:
@@ -76,8 +87,10 @@ class Slider(QSlider):
                 callback(value)
 
         print(f"{self.style_name} status: {value}")
+        
+        self.update_background_color(value)
+        
         self.update()
-
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -85,7 +98,6 @@ class Slider(QSlider):
         else:
             super().mouseDoubleClickEvent(event)
 
-    
     def paintEvent(self, event):
         super().paintEvent(event)
 
@@ -113,10 +125,58 @@ class Slider(QSlider):
 
             except Exception as e:
                 print(f"paintEvent exception: {e}")
-
             finally:
                 painter.end()
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+            
+            sr = self.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self
+            )
+            hr = self.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self
+            )
+
+            slider_length = sr.height() - hr.height()
+            clicked_position = event.position().y() - sr.top() - hr.height() / 2
+            
+            ratio = 1.0 - (clicked_position / slider_length)
+            new_value = int(self.minimum() + ratio * (self.maximum() - self.minimum()))
+            
+            new_value = max(self.minimum(), min(self.maximum(), new_value))
+            self.setValue(new_value)
+            
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+            
+            sr = self.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self
+            )
+            hr = self.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self
+            )
+
+            slider_length = sr.height() - hr.height()
+            clicked_position = event.position().y() - sr.top() - hr.height() / 2
+            
+            ratio = 1.0 - (clicked_position / slider_length)
+            new_value = int(self.minimum() + ratio * (self.maximum() - self.minimum()))
+            
+            new_value = max(self.minimum(), min(self.maximum(), new_value))
+            self.setValue(new_value)
+            
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
 
 class Mic_slider(Slider):
     def __init__(self):
@@ -526,7 +586,8 @@ class Slider_buttons_div(QWidget):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.setFixedHeight(255)
-        self.layout.setSpacing(2)
+        # self.setFixedWidth(100)
+        self.layout.setSpacing(0)
 
         self.r_toggle = Right_ToggleButtons()
         self.mic_slider = Mic_slider()
@@ -545,6 +606,7 @@ class Mic_container(QWidget):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(0)
+        self.setFixedWidth(160)
         self.layout.addWidget(IntelliPannel())
         self.layout.addWidget(CompGate())
         self.layout.addWidget(Slider_buttons_div())
@@ -554,9 +616,12 @@ class Mic_pannel(QWidget):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(0)
+        self.setFixedWidth(440)
+
         self.m1 = Mic_container()
         self.m2 = Mic_container()
         self.m3 = Mic_container()
+
         self.layout.addWidget(self.m1)
         self.layout.addWidget(self.m2)
         self.layout.addWidget(self.m3)
@@ -566,7 +631,7 @@ class Mic_pannel(QWidget):
 class Equalizer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(130, 150)
+        self.setFixedSize(130, 130)
         
         self.treble = Circle_slider(in_circle_text=False)
         self.mid = Circle_slider(in_circle_text=False)
@@ -576,9 +641,9 @@ class Equalizer(QWidget):
             pot.sliderSize = 42
             pot.setParent(self)
 
-        self.treble.move(15, 30)
-        self.mid.move(45, 65)
-        self.bass.move(15, 100)
+        self.treble.move(0, 10)
+        self.mid.move(30, 45)
+        self.bass.move(0, 80)
 
         self.treble.valueChanged.connect(self.update)
         self.mid.valueChanged.connect(self.update)
@@ -590,14 +655,14 @@ class Equalizer(QWidget):
 
         painter.setPen(QPen(QColor("#5b7a8c"))) 
         painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-        painter.drawText(QRect(0, 5, self.width(), 40), Qt.AlignmentFlag.AlignCenter, "EQUALIZER")
+        painter.drawText(QRect(-30, 0, self.width(), 20), Qt.AlignmentFlag.AlignCenter, "EQUALIZER")
 
         font_label = QFont("Arial", 8, QFont.Weight.Bold)
         font_value = QFont("Arial", 13, QFont.Weight.Bold)
 
         painter.setFont(font_label)
         painter.setPen(QPen(QColor("#4e616c")))
-        painter.drawText(75, 46, "Treble")
+        painter.drawText(50, 26, "Treble")
         
         if self.treble.value() < 0:
             value_color = QColor("#71c49a")
@@ -609,7 +674,7 @@ class Equalizer(QWidget):
         painter.setFont(font_value)
         painter.setPen(QPen(value_color))
         treble_val = f"{self.treble.value() / 10:.1f}"
-        painter.drawText(75, 66, treble_val)
+        painter.drawText(55, 46, treble_val)
 
         if self.mid.value() < 0:
             value_color = QColor("#71c49a")
@@ -623,10 +688,10 @@ class Equalizer(QWidget):
         mid_val = f"{self.mid.value() / 10:.1f}"
         print(len(mid_val))
         if len(mid_val) >= 4:
-            pos = 15
+            pos = 0
         else:
-            pos = 25
-        painter.drawText(pos, 100, mid_val)
+            pos = 5
+        painter.drawText(pos, 80, mid_val)
 
         bass_current = self.bass.value() / 10
         
@@ -639,11 +704,11 @@ class Equalizer(QWidget):
 
         painter.setFont(font_value)
         painter.setPen(QPen(value_color))
-        painter.drawText(75, 135, f"{bass_current:.1f}")
+        painter.drawText(55, 115, f"{bass_current:.1f}")
 
         painter.setFont(font_label)
         painter.setPen(QPen(QColor("#4e616c")))
-        painter.drawText(75, 150, "Bass")
+        painter.drawText(55, 130, "Bass")
 
 class Rl_Slider(QWidget):
     def __init__(self, parent=None):
@@ -660,12 +725,14 @@ class Rl_Slider(QWidget):
         painter.drawRect(self.rect())
 
 
+
 class Virtual_input(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(0)
         self.setFixedHeight(465)
+        self.setFixedWidth(120)
 
         self.eq = Equalizer()
         self.rl = Rl_Slider()
@@ -674,6 +741,41 @@ class Virtual_input(QWidget):
         self.layout.addWidget(self.eq)
         self.layout.addWidget(self.rl)
         self.layout.addWidget(self.sliders_container)
+
+class Virtual_input_panel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.setFixedHeight(465)
+        self.setFixedWidth(200)
+
+        self.sliders_1 = Virtual_input()
+        self.sliders_2 = Virtual_input()
+
+        self.layout.addWidget(self.sliders_1)
+        self.layout.addWidget(self.sliders_2)
+
+# ---- Hardware Output ----
+
+class Hardware_sliders(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(15)
+
+        self.sliders = []
+        for _ in range(5):
+            slider = Hardware_slider()
+            self.sliders.append(slider)
+            self.layout.addWidget(slider)
+    
+class Hardware_panel(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.sliders = Hardware_sliders()
+        self.layout.addWidget(self.sliders)
 
 
 class TitleBar(QWidget):

@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout,QHBoxLayout, QSlider, QLabel, QPushButton
-from .widgets import TitleBar,Mic_pannel, Virtual_input
+from .widgets import TitleBar,Mic_pannel, Virtual_input_panel, Hardware_panel
 from .styler import Styler
 
 import psutil
@@ -34,8 +34,8 @@ class Window(QMainWindow):
         self.panel_layout.setSpacing(0)
         
         self.panel_layout.addWidget(Mic_pannel())
-        self.panel_layout.addWidget(Virtual_input())
-        self.panel_layout.addWidget(Virtual_input())
+        self.panel_layout.addWidget(Virtual_input_panel())
+        self.panel_layout.addWidget(Hardware_panel())
         
 
         self.layout.addStretch(1) 
