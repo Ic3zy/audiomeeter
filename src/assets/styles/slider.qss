@@ -1,0 +1,26 @@
+QSlider::groove:vertical {
+    background: #0f1618;
+    height: 300px;
+    width: 20px;
+    border: 1px solid #2d3e46;
+    border-radius: 10px;
+}
+
+QSlider::handle:vertical {
+    background: #4c5e67;
+    border: 1px solid #111a1e;
+    height: 50px; 
+    width: 20px;
+    margin: -15px;
+    
+    border-radius: 25px;
+}
+
+QSlider::handle:vertical:hover {
+    background: #677d8a;
+}
+
+QSlider::add-page:vertical {
+    background: #3a7899;
+    border-radius: 10px;
+}
