@@ -123,6 +123,7 @@ class Slider(QSlider):
         if painter.begin(self):
             try:
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
                 opt = QStyleOptionSlider()
                 self.initStyleOption(opt)
@@ -140,6 +141,68 @@ class Slider(QSlider):
 
                 text = f"{self.value()}dB"
                 painter.drawText(knob_rect, Qt.AlignmentFlag.AlignCenter, text)
+
+                groove_rect = self.style().subControlRect(
+                    QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self
+                )
+
+                add_page_top = knob_rect.bottom()
+                add_page_bottom = groove_rect.bottom()
+                add_page_height = add_page_bottom - add_page_top
+
+
+                if add_page_height > 5: 
+                    painter.save()
+
+                    clip_rect = QRect(groove_rect.left(), add_page_top, groove_rect.width(), add_page_height)
+                    painter.setClipRect(clip_rect)
+
+                    fixed_font = QFont("Segoe UI")
+                    if self.style_name == "hardware_slider":
+                        fixed_font.setWeight(QFont.Weight.DemiBold)
+
+                        fixed_font.setPointSize(9)
+                    else:
+                        fixed_font.setWeight(QFont.Weight.Bold)
+
+                        fixed_font.setPointSize(11)
+
+
+                    painter.setFont(fixed_font)
+                    color = "#3d966a" if self.value() <= 0 else "#a01400"
+                    painter.setPen(QPen( QColor(color) ))
+
+                    fixed_text = "Faber Gain"
+
+                    center = groove_rect.center()
+                    painter.translate(center.x(), center.y())
+
+                    painter.rotate(-90)
+
+                    text_width = painter.fontMetrics().horizontalAdvance(fixed_text)
+
+                    if self.style_name == "hardware_slider":
+                        fixed_text_rect = QRect(
+                            -text_width // 2 + -30,
+                            -groove_rect.height() // 2, 
+                            text_width,
+                            groove_rect.height()
+                        )
+
+                    else:
+                        fixed_text_rect = QRect(
+                            -text_width // 2 + -60,
+                            -groove_rect.height() // 2, 
+                            text_width,
+                            groove_rect.height()
+                        )
+
+
+
+                    painter.drawText(fixed_text_rect, Qt.AlignmentFlag.AlignCenter, fixed_text)
+
+                    painter.resetTransform()
+                    painter.restore()
 
             except Exception as e:
                 print(f"paintEvent exception: {e}")
@@ -704,6 +767,67 @@ class Mic_pannel(QWidget):
 
 
 # ---- virtual inputs ----
+
+class VirtualInputLedVM(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self._meter_width = 15
+        self._meter_height = 54
+        self.current_value = 0.0
+        
+        self.setFixedSize(self._meter_width, self._meter_height)
+
+        self._bg_panel = QColor("#0a0d0f")
+        self._border_panel = QColor("#161d20")
+
+        self._led_empty_low = QColor("#121b1c")   
+        self._led_empty_mid = QColor("#111c14")   
+        self._led_empty_high = QColor("#1c1212")  
+
+        self._led_full_low = QColor("#5bc0be")    
+        self._led_full_mid = QColor("#00e676")    
+        self._led_full_high = QColor("#ff3333")   
+
+    def setValue(self, val):
+        self.current_value = max(0.0, min(1.0, val))
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        panel_rect = self.rect()
+        painter.setPen(QPen(self._border_panel, 1))
+        painter.setBrush(QBrush(self._bg_panel))
+        painter.drawRoundedRect(panel_rect.adjusted(0, 0, -1, -1), 3, 3)
+
+        offset_x = 3
+        offset_y = 3
+
+        active_rows_count = int(self.current_value * 27)
+
+        for i in range(27):
+            y_pos = offset_y + 53 - (i * 2)
+
+            if i < 15:    
+                color_empty, color_full = self._led_empty_low, self._led_full_low
+            elif i < 24:  
+                color_empty, color_full = self._led_empty_mid, self._led_full_mid
+            else:         
+                color_empty, color_full = self._led_empty_high, self._led_full_high
+
+            is_active = i < active_rows_count
+
+            current_led_color = color_full if is_active else color_empty
+
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(current_led_color))
+
+            for j in range(5):
+                x_pos = offset_x + (j * 2)
+                painter.drawRect(x_pos, y_pos, 1, 1)
+
 class Equalizer(QWidget):
     def __init__(self, parent=None, slider_number=None):
         if slider_number is None:
@@ -805,7 +929,7 @@ class Equalizer(QWidget):
 class Rl_Slider(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(50, 50)
+        self.setFixedSize(65, 55)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -835,10 +959,12 @@ class Virtual_input(QWidget):
 
         self.eq = Equalizer(slider_number=slider_number+3)
         self.rl = Rl_Slider(self)
+        self.led_vm = VirtualInputLedVM(self)
         self.rl_air = Air(height=50)
         self.sliders_container = Slider_buttons_div(disable_led=True, slider_number=slider_number+3)
 
-        self.rl.move(20, 155)
+        self.rl.move(15, 155)
+        self.led_vm.move(85, 156)
 
         self.layout.addWidget(self.eq)
         self.layout.addWidget(self.rl_air)

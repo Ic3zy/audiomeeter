@@ -3,14 +3,14 @@ QSlider::groove:vertical {
     background: #2c3d4d;
     height: 220px;
     width: 15px;
-    border: 1px solid #71c49a;
-    border-radius: 7.5px;
+    border: 2px solid #71c49a;
+    border-radius: 9px;
 }
 
 /* The moving knob/handle of the slider */
 QSlider::handle:vertical {
     background: #4c5e67;
-    border: 1px solid #71c49a;
+    border: 2px solid #71c49a;
     height: 35px; 
     width: 15px;
     margin: -11px -11px -11px -11px;
@@ -25,5 +25,5 @@ QSlider::handle:vertical:hover {
 /* The filled/active colored area below the slider knob */
 QSlider::add-page:vertical {
     background: #71c49a;
-    border-radius: 7.5px;
+    border-radius: 9px;
 }
