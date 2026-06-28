@@ -43,7 +43,11 @@ class Slider(QSlider):
         self.setMinimum(-60)
         self.setMaximum(12)
         self.setValue(0)
-        self.setFixedHeight(245)
+
+        if self.style_name == "hardware_slider":
+            self.setFixedHeight(171)
+        else:
+            self.setFixedHeight(245)
         
         if self.style_name is not None:
             styler_instance.set_style(self.style_name, self)
@@ -183,9 +187,6 @@ class Mic_slider(Slider):
         super().__init__()
 
 
-class Hardware_slider(Slider):
-    def __init__(self):
-        super().__init__("hardware_slider")
 
 
 class Circle_slider(QSlider):
@@ -758,11 +759,56 @@ class Virtual_input_panel(QWidget):
 
 # ---- Hardware Output ----
 
+class Cassette_player(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(150)
+        self.setFixedWidth(240)
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        
+        bg_color = "#132029"
+        
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(bg_color))
+        painter.drawRect(self.rect())
+
+
+class Hardware_buttons(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        pass
+
+class Hardware_slider(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setFixedWidth(47)
+        self.setFixedHeight(300)
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
+
+        self.slider = Slider("hardware_slider")
+
+        self.mono = ToggleButton("Mono")
+        self.eq = ToggleButton("EQ")
+        self.mute = ToggleButton("Mute")
+
+        self.layout.addWidget(Air(height=40))
+        self.layout.addWidget(self.mono)
+        self.layout.addWidget(self.eq)
+        self.layout.addWidget(self.mute)
+        self.layout.addWidget(self.slider)
+
+
 class Hardware_sliders(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFixedWidth(280)
+        self.setFixedHeight(290)
         self.layout = QHBoxLayout(self)
-        self.layout.setSpacing(15)
+        # self.layout.setSpacing(15)
+
 
         self.sliders = []
         for _ in range(5):
@@ -774,6 +820,7 @@ class Hardware_panel(QWidget):
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
+        self.layout.addWidget(Cassette_player())
         self.sliders = Hardware_sliders()
         self.layout.addWidget(self.sliders)
 

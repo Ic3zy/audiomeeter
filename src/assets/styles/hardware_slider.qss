@@ -1,7 +1,7 @@
 /* The track/background rail of the slider */
 QSlider::groove:vertical {
     background: #2c3d4d;
-    height: 220px;
+    height: 140px;
     width: 15px;
     border: 1px solid #71c49a;
     border-radius: 7px;
@@ -13,7 +13,7 @@ QSlider::handle:vertical {
     border: 1px solid #71c49a;
     height: 35px; 
     width: 15px;
-    margin: 0px -11px -22px -11px;
+    margin: -11px -11px -11px -11px;
     border-radius: 17px;
 }
 
