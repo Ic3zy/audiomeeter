@@ -16,4 +16,4 @@ def play_zero_db_tone(duration=5.0, frequency=440.0):
     speaker.play(stereo_tone, samplerate=samplerate)
 
 if __name__ == "__main__":
-    play_zero_db_tone(duration=40.0)
+    play_zero_db_tone(duration=400.0)

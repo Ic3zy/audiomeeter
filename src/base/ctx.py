@@ -65,6 +65,7 @@ class ctx:
 
     # --- Callbacks ---
     def callback_call(self, key):
+        print(self._callbacks, key)
         if self._callbacks.get(key) is not None:
             for callback in self._callbacks[key]:
                 callback()

@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent, QRe
 from .styler import Styler
 from base import Ctx
 import math
+import asyncio
+import random
 
 
 # TODO: replace real IntelliPannel
@@ -787,11 +789,65 @@ class VirtualInputLedVM(QWidget):
 
         self._led_full_low = QColor("#5bc0be")    
         self._led_full_mid = QColor("#00e676")    
-        self._led_full_high = QColor("#ff3333")   
+        self._led_full_high = QColor("#ff3333")  
+        
+        self._live_task = None
+        self._anim_task = None
+
+    async def _live_loop(self):
+        is_plussed = False
+        while True:
+            if self.current_value <= 0.1:
+                await asyncio.sleep(0.05)
+                continue
+
+            self.current_value += 0.04 if not is_plussed else -0.04
+            is_plussed = not is_plussed
+            self.update()
+            await asyncio.sleep(0.1)
+
+    async def _animate(self, end):
+        start = self.current_value
+        if abs(start - end) < 0.001:
+            return
+
+        reverse = start > end
+        last = start
+
+        while True:
+            if reverse:
+                last -= 0.07
+                if last <= end:
+                    last = end
+                    break
+            else:
+                last += 0.07
+                if last >= end:
+                    last = end
+                    break
+
+            self.current_value = last
+            self.update()
+            await asyncio.sleep(0.025)
+
+        self.current_value = end
+        self.update()
+
+    def db_to_percent(self, db):
+        return (db + 100) / 112
 
     def setValue(self, val):
-        self.current_value = max(0.0, min(1.0, val))
-        self.update()
+        print(f"setValue: {val}")
+        end = self.db_to_percent(val)
+
+        if self._anim_task and not self._anim_task.done():
+            self._anim_task.cancel()
+
+        if self._live_task is None or self._live_task.done():
+            self._live_task = asyncio.create_task(self._live_loop())
+        
+        self._anim_task = asyncio.create_task(self._animate(end))
+
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -807,12 +863,12 @@ class VirtualInputLedVM(QWidget):
 
         active_rows_count = int(self.current_value * 27)
 
-        for i in range(27):
-            y_pos = offset_y + 53 - (i * 2)
+        for i in range(24):
+            y_pos = offset_y + 46 - (i * 2)
 
-            if i < 15:    
+            if i < 12:    
                 color_empty, color_full = self._led_empty_low, self._led_full_low
-            elif i < 24:  
+            elif i < 20:  
                 color_empty, color_full = self._led_empty_mid, self._led_full_mid
             else:         
                 color_empty, color_full = self._led_empty_high, self._led_full_high
@@ -959,7 +1015,13 @@ class Virtual_input(QWidget):
 
         self.eq = Equalizer(slider_number=slider_number+3)
         self.rl = Rl_Slider(self)
+
         self.led_vm = VirtualInputLedVM(self)
+        name = "input_main" if slider_number == 1 else "input_aux"
+    
+
+        Ctx.add_callback(name, lambda: self.led_vm.setValue(Ctx[name]))
+
         self.rl_air = Air(height=50)
         self.sliders_container = Slider_buttons_div(disable_led=True, slider_number=slider_number+3)
 
