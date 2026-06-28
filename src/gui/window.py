@@ -27,7 +27,7 @@ class Window(QMainWindow):
         self.panel_widget.setStyleSheet("background-color: transparent;")
         self.panel_widget.setFixedWidth(900)
         self.panel_widget.setFixedHeight(470)
-        self.panel_widget.move(0, 65)
+        self.panel_widget.move(0, 75)
 
         self.panel_layout = QHBoxLayout(self.panel_widget) 
         self.panel_layout.setContentsMargins(0, 0, 0, 0) 

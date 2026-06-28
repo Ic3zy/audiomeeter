@@ -16,6 +16,7 @@ class IntelliPannel(QWidget):
         super().__init__(parent)
         self.setFixedHeight(120)
         self.setFixedWidth(120)
+
     
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -25,6 +26,17 @@ class IntelliPannel(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(bg_color))
         painter.drawRect(self.rect())
+
+
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        painter.setPen(QPen(QColor("#5b7a8c")))
+
+        painter.setFont(self.font())
+
+        text_rect = QRect(0, 10, self.width(), 20) 
+
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "To be continued...")
 
 
 # ----- sliders -----
@@ -48,6 +60,8 @@ class Slider(QSlider):
             self.setFixedHeight(171)
         else:
             self.setFixedHeight(245)
+
+        self.setFixedWidth(0)
         
         if self.style_name is not None:
             styler_instance.set_style(self.style_name, self)
@@ -587,7 +601,6 @@ class Slider_buttons_div(QWidget):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.setFixedHeight(255)
-        # self.setFixedWidth(100)
         self.layout.setSpacing(0)
 
         self.r_toggle = Right_ToggleButtons()
@@ -656,7 +669,7 @@ class Equalizer(QWidget):
 
         painter.setPen(QPen(QColor("#5b7a8c"))) 
         painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-        painter.drawText(QRect(-30, 0, self.width(), 20), Qt.AlignmentFlag.AlignCenter, "EQUALIZER")
+        painter.drawText(QRect(-30, 0, self.width(), 10), Qt.AlignmentFlag.AlignCenter, "EQUALIZER")
 
         font_label = QFont("Arial", 8, QFont.Weight.Bold)
         font_value = QFont("Arial", 13, QFont.Weight.Bold)
@@ -725,6 +738,13 @@ class Rl_Slider(QWidget):
         painter.setBrush(QBrush(bg_color))
         painter.drawRect(self.rect())
 
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#5b7a8c")))
+        font = QFont("Arial", 7, QFont.Weight.Bold)
+        self.setFont(font)
+        painter.setFont(self.font())
+        text_rect = QRect(0, 8, self.width(), 25) 
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "To be \ncontinued")
 
 
 class Virtual_input(QWidget):
@@ -736,11 +756,14 @@ class Virtual_input(QWidget):
         self.setFixedWidth(120)
 
         self.eq = Equalizer()
-        self.rl = Rl_Slider()
+        self.rl = Rl_Slider(self)
+        self.rl_air = Air(height=50)
         self.sliders_container = Slider_buttons_div(disable_led=True)
 
+        self.rl.move(20, 155)
+
         self.layout.addWidget(self.eq)
-        self.layout.addWidget(self.rl)
+        self.layout.addWidget(self.rl_air)
         self.layout.addWidget(self.sliders_container)
 
 class Virtual_input_panel(QWidget):
@@ -757,7 +780,68 @@ class Virtual_input_panel(QWidget):
         self.layout.addWidget(self.sliders_1)
         self.layout.addWidget(self.sliders_2)
 
+
 # ---- Hardware Output ----
+
+class HardwareLedVM(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self._meter_width = 18
+        self._meter_height = 134
+        self.current_value = 0.0
+        
+        self.setFixedSize(self._meter_width, self._meter_height)
+
+        self._bg_panel = QColor("#0a0d0f")
+        self._border_panel = QColor("#161d20")
+
+        self._led_empty_low = QColor("#121b1c")   
+        self._led_empty_mid = QColor("#111c14")   
+        self._led_empty_high = QColor("#1c1212")  
+
+        self._led_full_low = QColor("#5bc0be")    
+        self._led_full_mid = QColor("#00e676")    
+        self._led_full_high = QColor("#ff3333")   
+
+    def setValue(self, val):
+        self.current_value = max(0.0, min(1.0, val))
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        panel_rect = self.rect()
+        painter.setPen(QPen(self._border_panel, 1))
+        painter.setBrush(QBrush(self._bg_panel))
+        painter.drawRoundedRect(panel_rect.adjusted(0, 0, -1, -1), 3, 3)
+
+        offset_x = 3
+        offset_y = 3
+
+        active_rows_count = int(self.current_value * 64)
+
+        for i in range(64):
+            y_pos = offset_y + 126 - (i * 2)
+
+            if i < 35:    
+                color_empty, color_full = self._led_empty_low, self._led_full_low
+            elif i < 57:  
+                color_empty, color_full = self._led_empty_mid, self._led_full_mid
+            else:         
+                color_empty, color_full = self._led_empty_high, self._led_full_high
+
+            is_active = i < active_rows_count
+            current_led_color = color_full if is_active else color_empty
+
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(current_led_color))
+
+            for j in range(7):
+                x_pos = offset_x + (j * 2)
+                painter.drawRect(x_pos, y_pos, 1, 1)
+
 
 class Cassette_player(QWidget):
     def __init__(self, parent=None):
@@ -774,53 +858,107 @@ class Cassette_player(QWidget):
         painter.setBrush(QBrush(bg_color))
         painter.drawRect(self.rect())
 
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#5b7a8c")))
+        painter.setFont(self.font())
+
+        text_rect = QRect(0, 10, self.width(), 20) 
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "To be continued...")
+
 
 class Hardware_buttons(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         pass
 
-class Hardware_slider(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setFixedWidth(47)
-        self.setFixedHeight(300)
-        self.layout = QVBoxLayout(self)
+class H_Slider(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
         self.layout.setSpacing(0)
+        self.layout.setContentsMargins(-10, -10, -10, -10)
+        # self.setFixedWidth(5)
+        self.setFixedHeight(190)
 
         self.slider = Slider("hardware_slider")
+        self.led_vol_meter = HardwareLedVM()
+
+        self.layout.addWidget(self.led_vol_meter)
+        self.layout.addWidget(self.slider)
+
+class ChannelControls(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(60) 
+        self.setFixedHeight(72)
+        
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(20, 0, 0, 0)
 
         self.mono = ToggleButton("Mono")
         self.eq = ToggleButton("EQ")
         self.mute = ToggleButton("Mute")
 
-        self.layout.addWidget(Air(height=40))
         self.layout.addWidget(self.mono)
         self.layout.addWidget(self.eq)
         self.layout.addWidget(self.mute)
+
+class Hardware_slider(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(74)
+        self.setFixedHeight(290)
+        
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+
+        self.slider = H_Slider()
+
+        self.buttons = ChannelControls()
+
+        self.layout.addWidget(Air(height=40))
+
+        self.layout.addWidget(self.buttons)
+        self.layout.addWidget(self.slider)
+
+
+class H_Slider_container(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setFixedWidth(290)
+        self.setFixedHeight(290)
+        
+        self.slider = Hardware_slider()
         self.layout.addWidget(self.slider)
 
 
 class Hardware_sliders(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(280)
+        self.setFixedWidth(290)
         self.setFixedHeight(290)
         self.layout = QHBoxLayout(self)
-        # self.layout.setSpacing(15)
-
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 10, 0)
 
         self.sliders = []
         for _ in range(5):
-            slider = Hardware_slider()
+            slider = H_Slider_container()
             self.sliders.append(slider)
             self.layout.addWidget(slider)
-    
+
+
 class Hardware_panel(QWidget):
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
-        self.layout.addWidget(Cassette_player())
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.addWidget(Cassette_player(), alignment=Qt.AlignmentFlag.AlignHCenter)
         self.sliders = Hardware_sliders()
         self.layout.addWidget(self.sliders)
 
