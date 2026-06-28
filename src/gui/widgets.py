@@ -7,6 +7,7 @@ from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush
 from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent, QRect
 
 from .styler import Styler
+from base import Ctx
 import math
 
 
@@ -84,6 +85,7 @@ class Slider(QSlider):
     def add_status_change_callback(self, callback):
         if callback in self.status_change_callbacks:
             raise ValueError(f"Callback already added: {callback}")
+        
         self.status_change_callbacks.append(callback)
 
     def update_background_color(self, value):
@@ -104,8 +106,6 @@ class Slider(QSlider):
             for callback in self.status_change_callbacks:
                 callback(value)
 
-        print(f"{self.style_name} status: {value}")
-        
         self.update_background_color(value)
         
         self.update()
@@ -221,6 +221,10 @@ class Circle_slider(QSlider):
         self._slider_size = 100
         self.setFixedSize(self._slider_size, self._slider_size)
 
+        self.status_change_callbacks = []
+
+        self.valueChanged.connect(self.on_slider_value_changed)
+
         styler_instance = Styler.instance()
         if styler_instance is None:
             raise ValueError("Styler instance not found.")
@@ -239,6 +243,17 @@ class Circle_slider(QSlider):
 
     def value(self):
         return self.current_value
+
+    def on_slider_value_changed(self, value):
+        if self.status_change_callbacks:
+            for callback in self.status_change_callbacks:
+                callback(value)
+
+    def add_status_change_callback(self, callback):
+        if callback in self.status_change_callbacks:
+            raise ValueError(f"Callback already added: {callback}")
+        
+        self.status_change_callbacks.append(callback)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -357,11 +372,24 @@ class ToggleButton(QAbstractButton):
         self._text_on = QColor("#ffffff")
 
         self.clicked.connect(lambda: self.stateChanged.emit(self.isChecked()))
+        self.clicked.connect(self.on_state_changed)
 
-        from .styler import Styler 
+        self.status_change_callbacks = []
+
         styler_instance = Styler.instance()
         if styler_instance:
             styler_instance.set_style("toggle_button", self)
+
+    def on_state_changed(self, state):
+        for callback in self.status_change_callbacks:
+            callback(state)
+    
+    def add_status_change_callback(self, callback):
+        if callback in self.status_change_callbacks:
+            raise ValueError(f"Callback already added: {callback}")
+
+        self.status_change_callbacks.append(callback)
+        
 
     @Property(int)
     def btnWidth(self): return self._btn_width
@@ -455,40 +483,6 @@ class Air(QWidget):
         self.setFixedHeight(height)
 
 
-class Right_ToggleButtons(QWidget):
-    def __init__(self, mono="Mono"):
-        super().__init__()
-        self.map = [
-            "A1",
-            "A2",
-            "A3",
-            "air",
-            "B1",
-            "B2",
-            "air",
-            mono,
-            "air",
-            "Solo",
-            "Mute"
-        ]
-        self.setFixedHeight(240)
-        self.layout = QVBoxLayout(self)
-        self.layout.setSpacing(2)
-        self.create()
-    
-    def addWidget(self, widget):
-        self.layout.addWidget(widget)
-
-    def create_object(self, text):
-        if text == "air":
-            return Air(4)
-        else:
-            return ToggleButton(text)
-
-    def create(self):
-        for text in self.map:
-            btn = self.create_object(text)
-            self.addWidget(btn)
 
 
 class LEDVolumeMeter(QWidget):
@@ -579,15 +573,75 @@ class LEDVolumeMeter(QWidget):
             painter.drawRect(pad_left, int(y_pos), col_w, int(block_h))
             painter.drawRect(pad_left + col_w + 1, int(y_pos), col_w, int(block_h))
 
+class Right_ToggleButtons(QWidget):
+    def __init__(self, mono="Mono", slider_number=None):
+        if  slider_number is None:
+            raise ValueError("slider_number cannot be None")
+
+        self.slider_number = slider_number
+
+        super().__init__()
+        self.map = [
+            "A1",
+            "A2",
+            "A3",
+            "air",
+            "B1",
+            "B2",
+            "air",
+            mono,
+            "air",
+            "Solo",
+            "Mute"
+        ]
+        self.setFixedHeight(240)
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(2)
+        self.create()
+    
+    def addWidget(self, widget):
+        self.layout.addWidget(widget)
+
+    def create_object(self, text):
+        if text == "air":
+            return Air(4)
+        else:
+            return ToggleButton(text)
+
+    def create(self):
+        for text in self.map:
+            btn = self.create_object(text)
+            
+            def callback(state, t=text):
+                ctx_name = f"s_{self.slider_number}_{t}"
+                
+                Ctx[ctx_name] = state
+
+                print(f"s_{self.slider_number}_{t}: {state}")
+
+            if hasattr(btn, "stateChanged"):
+                btn.stateChanged.connect(callback)
+            
+            self.addWidget(btn)
+
 
 class CompGate(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(2)
 
         self.comp = Circle_slider()
+        def comp_callback(value):
+            ctx_name = f"s_{slider_number}_Comp"
+            Ctx[ctx_name] = value
+        self.comp.add_status_change_callback(comp_callback)
+        
         self.gate = Circle_slider()
+        def gate_callback(value):
+            ctx_name = f"s_{slider_number}_Gate"
+            Ctx[ctx_name] = value
+        self.gate.add_status_change_callback(gate_callback)
 
         self.layout.addWidget(self.comp)
         self.layout.addWidget(self.gate)
@@ -597,14 +651,22 @@ class CompGate(QWidget):
 
 
 class Slider_buttons_div(QWidget):
-    def __init__(self, parent=None, disable_led=False):
+    def __init__(self, parent=None, disable_led=False, slider_number=None):
+        if slider_number is None:
+            raise ValueError("slider_number cannot be None")
+        
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.setFixedHeight(255)
         self.layout.setSpacing(0)
 
-        self.r_toggle = Right_ToggleButtons()
+        self.r_toggle = Right_ToggleButtons(slider_number=slider_number)
         self.mic_slider = Mic_slider()
+        def mic_callback(value):
+            ctx_name = f"s_sl_{slider_number}"
+            Ctx[ctx_name] = value
+
+        self.mic_slider.add_status_change_callback(mic_callback)
 
         if not disable_led:
             self.led_vol_meter = LEDVolumeMeter()
@@ -616,14 +678,14 @@ class Slider_buttons_div(QWidget):
 
 
 class Mic_container(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(0)
         self.setFixedWidth(160)
         self.layout.addWidget(IntelliPannel())
-        self.layout.addWidget(CompGate())
-        self.layout.addWidget(Slider_buttons_div())
+        self.layout.addWidget(CompGate(slider_number=slider_number))
+        self.layout.addWidget(Slider_buttons_div(slider_number=slider_number))
 
 class Mic_pannel(QWidget):
     def __init__(self, parent=None):
@@ -632,9 +694,9 @@ class Mic_pannel(QWidget):
         self.layout.setSpacing(0)
         self.setFixedWidth(440)
 
-        self.m1 = Mic_container()
-        self.m2 = Mic_container()
-        self.m3 = Mic_container()
+        self.m1 = Mic_container(slider_number=1)
+        self.m2 = Mic_container(slider_number=2)
+        self.m3 = Mic_container(slider_number=3)
 
         self.layout.addWidget(self.m1)
         self.layout.addWidget(self.m2)
@@ -643,7 +705,10 @@ class Mic_pannel(QWidget):
 
 # ---- virtual inputs ----
 class Equalizer(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
+        if slider_number is None:
+            raise ValueError("slider_number cannot be None")
+        
         super().__init__(parent)
         self.setFixedSize(130, 130)
         
@@ -656,8 +721,22 @@ class Equalizer(QWidget):
             pot.setParent(self)
 
         self.treble.move(0, 10)
+        def treble_callback(value):
+            ctx_name = f"s_{slider_number}_Treble"
+            Ctx[ctx_name] = value
+        self.treble.add_status_change_callback(treble_callback)
+
         self.mid.move(30, 45)
+        def mid_callback(value):
+            ctx_name = f"s_{slider_number}_Mid"
+            Ctx[ctx_name] = value
+        self.mid.add_status_change_callback(mid_callback)
+
         self.bass.move(0, 80)
+        def bass_callback(value):
+            ctx_name = f"s_{slider_number}_Bass"
+            Ctx[ctx_name] = value
+        self.bass.add_status_change_callback(bass_callback)
 
         self.treble.valueChanged.connect(self.update)
         self.mid.valueChanged.connect(self.update)
@@ -700,7 +779,6 @@ class Equalizer(QWidget):
         painter.setFont(font_value)
         painter.setPen(QPen(value_color))
         mid_val = f"{self.mid.value() / 10:.1f}"
-        print(len(mid_val))
         if len(mid_val) >= 4:
             pos = 0
         else:
@@ -748,17 +826,17 @@ class Rl_Slider(QWidget):
 
 
 class Virtual_input(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(0)
         self.setFixedHeight(465)
         self.setFixedWidth(120)
 
-        self.eq = Equalizer()
+        self.eq = Equalizer(slider_number=slider_number+3)
         self.rl = Rl_Slider(self)
         self.rl_air = Air(height=50)
-        self.sliders_container = Slider_buttons_div(disable_led=True)
+        self.sliders_container = Slider_buttons_div(disable_led=True, slider_number=slider_number+3)
 
         self.rl.move(20, 155)
 
@@ -774,8 +852,8 @@ class Virtual_input_panel(QWidget):
         self.setFixedHeight(465)
         self.setFixedWidth(200)
 
-        self.sliders_1 = Virtual_input()
-        self.sliders_2 = Virtual_input()
+        self.sliders_1 = Virtual_input(slider_number=1)
+        self.sliders_2 = Virtual_input(slider_number=2)
 
         self.layout.addWidget(self.sliders_1)
         self.layout.addWidget(self.sliders_2)
@@ -872,7 +950,7 @@ class Hardware_buttons(QWidget):
         pass
 
 class H_Slider(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(0)
@@ -881,13 +959,22 @@ class H_Slider(QWidget):
         self.setFixedHeight(190)
 
         self.slider = Slider("hardware_slider")
+        def slider_callback(value):
+            ctx_name = f"s_sl_{slider_number}"
+            Ctx[ctx_name] = value
+        self.slider.add_status_change_callback(slider_callback)
+
         self.led_vol_meter = HardwareLedVM()
+
 
         self.layout.addWidget(self.led_vol_meter)
         self.layout.addWidget(self.slider)
 
 class ChannelControls(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
+        if slider_number is None:
+            raise ValueError("slider_number cannot be None")
+        
         super().__init__(parent)
         self.setFixedWidth(60) 
         self.setFixedHeight(72)
@@ -896,15 +983,29 @@ class ChannelControls(QWidget):
         self.layout.setContentsMargins(20, 0, 0, 0)
 
         self.mono = ToggleButton("Mono")
+        def mono_callback(state):
+            ctx_name = f"s_{slider_number}_Mono"
+            Ctx[ctx_name] = state
+        self.mono.add_status_change_callback(mono_callback)
+
         self.eq = ToggleButton("EQ")
+        def eq_callback(state):
+            ctx_name = f"s_{slider_number}_Eq"
+            Ctx[ctx_name] = state
+        self.eq.add_status_change_callback(eq_callback)
+
         self.mute = ToggleButton("Mute")
+        def mute_callback(state):
+            ctx_name = f"s_{slider_number}_Mute"
+            Ctx[ctx_name] = state
+        self.mute.add_status_change_callback(mute_callback)
 
         self.layout.addWidget(self.mono)
         self.layout.addWidget(self.eq)
         self.layout.addWidget(self.mute)
 
 class Hardware_slider(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
         super().__init__(parent)
         self.setFixedWidth(74)
         self.setFixedHeight(290)
@@ -913,9 +1014,9 @@ class Hardware_slider(QWidget):
         self.layout.setSpacing(0)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        self.slider = H_Slider()
+        self.slider = H_Slider(slider_number=slider_number)
 
-        self.buttons = ChannelControls()
+        self.buttons = ChannelControls(slider_number=slider_number)
 
         self.layout.addWidget(Air(height=40))
 
@@ -924,7 +1025,7 @@ class Hardware_slider(QWidget):
 
 
 class H_Slider_container(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, slider_number=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(0)
@@ -932,7 +1033,7 @@ class H_Slider_container(QWidget):
         self.setFixedWidth(290)
         self.setFixedHeight(290)
         
-        self.slider = Hardware_slider()
+        self.slider = Hardware_slider(slider_number=slider_number)
         self.layout.addWidget(self.slider)
 
 
@@ -947,7 +1048,7 @@ class Hardware_sliders(QWidget):
 
         self.sliders = []
         for _ in range(5):
-            slider = H_Slider_container()
+            slider = H_Slider_container(slider_number=_+6)
             self.sliders.append(slider)
             self.layout.addWidget(slider)
 
