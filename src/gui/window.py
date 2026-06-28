@@ -5,7 +5,11 @@ from .styler import Styler
 
 import psutil
 import os
+import asyncio
+
 from PySide6.QtCore import QTimer
+from qasync import QEventLoop
+
 
 class Window(QMainWindow):
     def __init__(self):
@@ -41,19 +45,12 @@ class Window(QMainWindow):
         self.layout.addStretch(1) 
         # ----------------------------
 
-        self.ram_timer = QTimer(self)
-        self.ram_timer.timeout.connect(self.log_ram_usage)
-        self.ram_timer.start(2000)
+        # self.ram_timer = QTimer(self)
+        # self.ram_timer.timeout.connect(self.log_ram_usage)
+        # self.ram_timer.start(2000)
 
     def log_ram_usage(self):
         process = psutil.Process(os.getpid())
         ram_mb = process.memory_info().rss / (1024 * 1024)
         print(f"Anlık RAM Kullanımı: {ram_mb:.2f} MB")
 
-
-
-# DEBUG
-app = QApplication(sys.argv)
-w = Window()
-w.show()
-sys.exit(app.exec())
