@@ -15,7 +15,7 @@ class Core:
     def init(self):
         if DEBUG and os.path.exists(self.f):
             self._clean()
-
+            
         expected_devices = {
             "input_main": ("sink", "audiomeeter-input"),
             "input_aux": ("sink", "audiomeeter-aux-input"),
