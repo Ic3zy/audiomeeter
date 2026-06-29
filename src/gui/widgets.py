@@ -3,8 +3,8 @@ from PySide6.QtWidgets import (
     QStyle, QWidget, QAbstractButton,
     QVBoxLayout, QHBoxLayout, QSizePolicy, QStyleOption
 )
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush
-from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent, QRect
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygon
+from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent, QRect, QPoint
 
 from .styler import Styler
 from base import Ctx
@@ -1252,18 +1252,255 @@ class Hardware_panel(QWidget):
         self.layout.addWidget(self.sliders)
 
 
-class TitleBar(QWidget):
+# ---- title bar ----
+class Select_hardware_output_buttons(QWidget):
+    def __init__(self, parent=None, slider_number=1):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.setFixedSize(25, 35) 
+        self.text = f"A{slider_number}"
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        w_rect = self.rect()
+
+        border_pen = QPen(QColor("#607a89"), 1)
+        bg_brush = QBrush(QColor("#3d5267")) 
+        
+        painter.setPen(border_pen)
+        painter.setBrush(bg_brush)
+        
+        btn_rect = QRect(w_rect.left() + 1, w_rect.top() + 1, w_rect.width() - 2, w_rect.height() - 2)
+        painter.drawRect(btn_rect)
+
+        top_font = QFont("Arial")
+        top_font.setPixelSize(11)
+        top_font.setBold(True)
+        painter.setFont(top_font)
+        painter.setPen(QPen(QColor("#eef2f5"))) 
+        
+        text_rect = QRect(btn_rect.left(), btn_rect.top() + 2, btn_rect.width(), 16)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self.text)
+
+        arrow_pen = QPen(QColor("#d1dbe3"), 1)
+        arrow_brush = QBrush(QColor("#d1dbe3"))
+        painter.setPen(arrow_pen)
+        painter.setBrush(arrow_brush)
+        
+        center_x = btn_rect.center().x()
+        arrow_top_y = text_rect.bottom() + 1
+        
+        points = [
+            QPoint(center_x - 3, arrow_top_y),
+            QPoint(center_x + 3, arrow_top_y),
+            QPoint(center_x, arrow_top_y + 3)
+        ]
+        
+        painter.drawPolygon(QPolygon(points))
+        painter.end()
+    
+class H_o_button_container(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(3)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setFixedSize(85, 38) 
         
-        self.setFixedHeight(80)
-        self.setFixedWidth(900)
+        for _ in range(3):
+            self.layout.addWidget(Select_hardware_output_buttons(slider_number=_+1))
+
+class Hardware_output_text(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.device_a1_text = "Headset Earphone (Jabra BIZ 2300)"
+        self.device_a2_text = "Speakers (High Definition Audio Device)"
+        self.setMinimumSize(220, 50)
+        
+    def set_device_text(self, output_key, new_text):
+        if output_key == "A1":
+            self.device_a1_text = new_text
+        elif output_key == "A2":
+            self.device_a2_text = new_text
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        w_rect = self.rect()
+        top_offset = 0  
+
+        padding_left = 6
+        content_width = w_rect.width() - (padding_left * 2)
+
+        font_title = QFont("Arial")
+        font_title.setPixelSize(12)
+        font_title.setBold(True)
+        painter.setFont(font_title)
+        painter.setPen(QPen(QColor("#8faac2")))
+
+        rect_title = QRect(w_rect.left() + padding_left, w_rect.top() + top_offset, content_width, 14)
+        painter.drawText(rect_title, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "HARDWARE OUT")
+
+        font_device = QFont("Arial")
+        font_device.setPixelSize(10)
+        font_device.setWeight(QFont.Weight.Normal)
+        painter.setFont(font_device)
+        painter.setPen(QPen(QColor("#d1d1d6"))) 
+
+        rect_a1 = QRect(w_rect.left() + padding_left, rect_title.bottom() + 1, content_width, 13)
+        painter.drawText(rect_a1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.device_a1_text)
+
+        rect_a2 = QRect(w_rect.left() + padding_left, rect_a1.bottom() + 1, content_width, 13)
+        painter.drawText(rect_a2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.device_a2_text)
+
+        painter.end()
+
+class Select_h_i_container(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(6)
+        self.layout.setContentsMargins(10, 14, 5, 0)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+
+        self.h_o_button_container = H_o_button_container(self)
+        self.hardware_text = Hardware_output_text(self)
+
+        self.layout.addWidget(self.h_o_button_container, alignment=Qt.AlignmentFlag.AlignTop)
+        self.layout.addWidget(self.hardware_text, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
+
+class VirtualInputsContainer(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         
+        self.vaio_text = "Voicemeeter VAIO"
+        self.aux_text = "Voicemeeter AUX"
+        
+        self.setMinimumSize(200, 80)
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        
+        w_rect = self.rect()
+        top_offset = 6
+        
+        line_pen = QPen(QColor("#2d3d4a"), 1)
+        painter.setPen(line_pen)
+        painter.drawLine(w_rect.left(), w_rect.top() + top_offset, w_rect.left(), w_rect.bottom() - 10)
+        
+        font_title = QFont("Arial")
+        font_title.setPixelSize(12)
+        font_title.setBold(True)
+        painter.setFont(font_title)
+        painter.setPen(QPen(QColor("#8faac2")))
+        
+        title_rect = QRect(w_rect.left(), w_rect.top() + top_offset, w_rect.width(), 16)
+        painter.drawText(title_rect, Qt.AlignmentFlag.AlignCenter, "VIRTUAL INPUTS")
+        
+        font_device = QFont("Arial")
+        font_device.setPixelSize(10)
+        font_device.setWeight(QFont.Weight.Normal)
+        painter.setFont(font_device)
+        painter.setPen(QPen(QColor("#a2a2a2")))
+        
+        half_width = w_rect.width() // 2
+        
+        vaio_rect = QRect(w_rect.left(), title_rect.bottom() + 2, half_width, 14)
+        painter.drawText(vaio_rect, Qt.AlignmentFlag.AlignCenter, self.vaio_text)
+        
+        aux_rect = QRect(w_rect.left() + half_width, title_rect.bottom() + 2, half_width, 14)
+        painter.drawText(aux_rect, Qt.AlignmentFlag.AlignCenter, self.aux_text)
+        
+        painter.end()
+
+class MicsContainer(QWidget):
+    def __init__(self, parent=None, slider_number=1):
+        super().__init__(parent)
+        self.slider_number = slider_number
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.setMinimumSize(140, 80)
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        
+        w_rect = self.rect()
+        
+        top_offset = 6 
+
+        line_pen = QPen(QColor("#2d3d4a"), 1)
+        painter.setPen(line_pen)
+        painter.drawLine(w_rect.left(), w_rect.top() + top_offset, w_rect.left(), w_rect.bottom() - 10)
+        
+        padding_left = 10
+        content_width = w_rect.width() - (padding_left * 2)
+        
+        top_font = QFont("Arial")
+        top_font.setPixelSize(11)
+        top_font.setBold(True)
+        painter.setFont(top_font)
+        painter.setPen(QPen(QColor("#8faac2")))
+        
+        top_text = f"HARDWARE INPUT  {self.slider_number}"
+        
+        top_rect = QRect(w_rect.left() + padding_left, w_rect.top() + top_offset, content_width, 16)
+        painter.drawText(top_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, top_text)
+        
+        bottom_font = QFont("Arial")
+        bottom_font.setPixelSize(10)
+        painter.setFont(bottom_font)
+        painter.setPen(QPen(QColor("#a2a2a2")))
+        
+        bottom_text = "Select Input Device"
+        bottom_rect = QRect(w_rect.left() + padding_left, top_rect.bottom() + 2, content_width, 14)
+        painter.drawText(bottom_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, bottom_text)
+        
+        painter.end()
+
+class TitleBar(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(0)
+        
+        self.layout.setContentsMargins(0, 28, 0, 0)
+
+        for _ in range(3):
+            self.layout.addWidget(MicsContainer(slider_number=_+1))
+        
+        self.virtual_inputs = VirtualInputsContainer(self)
+        self.layout.addWidget(self.virtual_inputs)
+        
+        self.select_container = Select_h_i_container(self)
+        self.layout.addWidget(self.select_container, stretch=1)
+
+        self.setFixedHeight(80)
+        self.setFixedWidth(950) 
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
         bg_color = "#36495a"
         
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(bg_color))
         painter.drawRect(self.rect())
+        painter.end()
