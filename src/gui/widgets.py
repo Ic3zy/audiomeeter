@@ -868,7 +868,7 @@ class VirtualInputLedVM(QWidget):
 
             if i < 12:    
                 color_empty, color_full = self._led_empty_low, self._led_full_low
-            elif i < 20:  
+            elif i < 18:  
                 color_empty, color_full = self._led_empty_mid, self._led_full_mid
             else:         
                 color_empty, color_full = self._led_empty_high, self._led_full_high

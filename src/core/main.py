@@ -16,19 +16,39 @@ class Core:
         if DEBUG and os.path.exists(self.f):
             self._clean()
 
+        expected_devices = {
+            "input_main": ("sink", "audiomeeter-input"),
+            "input_aux": ("sink", "audiomeeter-aux-input"),
+            "out_b1": ("source", "audiomeeter-out-b1"),
+            "out_b2": ("source", "audiomeeter-out-b2"),
+        }
+
+        existing = {}
+        try:
+            for key, (dev_type, name) in expected_devices.items():
+                if dev_type == "sink":
+                    try:
+                        sink = self.pulse.get_sink_by_name(name)
+                        existing[key] = sink.index
+                    except pulsectl.PulseIndexError:
+                        break
+                else:
+                    try:
+                        source = self.pulse.get_source_by_name(name)
+                        existing[key] = source.index
+                    except pulsectl.PulseIndexError:
+                        break
+            
+            if len(existing) == len(expected_devices):
+                self.devices = existing
+                return self.devices
+                
+        except Exception as e:
+            print(f" Core error: {e}")
+
         if os.path.exists(self.f):
+            self._clean()
 
-            try:
-                saved = json.load(open(self.f))
-
-                if all(m in [x.index for x in self.pulse.module_list()] for m in saved.values()):
-                    self.devices = saved
-                    print(" [AudioMeeter] Eski oturum:", self.devices)
-                    return self.devices
-
-            except: pass
-
-        print(" [AudioMeeter] Sanal cihaz matrisi enjekte ediliyor...")
 
         self.devices = {
             "input_main": self.pulse.module_load('module-null-sink', 'sink_name=audiomeeter-input sink_properties=device.description=AudioMeeter_Input_(Main)'),
@@ -40,6 +60,7 @@ class Core:
         json.dump(self.devices, open(self.f, "w"), indent=4)
 
         return self.devices
+
     def _clean(self):
         try:
             for k, v in json.load(open(self.f)).items():
@@ -161,6 +182,7 @@ class Watcher:
 class Engine:
     def __init__(self,):
         self.core = Core()
+        self.core.init()
         self.watcher = Watcher(self.core, self.on_frequency_change)
     
     def on_frequency_change(self, key, frequency):
