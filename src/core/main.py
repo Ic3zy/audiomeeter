@@ -11,6 +11,8 @@ class Core:
         self.pulse = pulsectl.Pulse('audiomeeter-core')
         self.f = f
         self.devices = {}
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
 
     def init(self):
         if DEBUG and os.path.exists(self.f):
@@ -59,18 +61,104 @@ class Core:
 
         json.dump(self.devices, open(self.f, "w"), indent=4)
 
+        self.save_callback_state()
+
         return self.devices
+
+    def _do_route_worker(self, source_name: str, physical_device_name: str):
+        args = f"source={source_name} sink={physical_device_name} latency_msec=20"
+        
+        with pulsectl.Pulse('audiomeeter-route-worker') as worker_pulse:
+            return worker_pulse.module_load("module-loopback", args)
+
+    async def route_virtual_to_physical_async(self, virtual_key: str, physical_device_name: str):
+        bridge_key = f"{virtual_key}_to_{physical_device_name}"
+        source_name = "audiomeeter-input.monitor" if virtual_key == "input_main" else "audiomeeter-aux-input.monitor"
+
+        try:
+            loop = asyncio.get_event_loop()
+            t = loop.run_in_executor(
+                self._executor, 
+                self._do_route_worker, 
+                source_name, 
+                physical_device_name
+            )
+            
+            asyncio.ensure_future(t)
+            
+            print(f" [Core] Gizli Bağlantı Görevi Arka Plana Atıldı: {bridge_key}")
+            
+        except Exception as e:
+            print(f" [Core] Görev başlatılırken hata: {e}")
+            raise e
+
+    def unroute_virtual_from_physical(self, virtual_key: str, physical_device_name: str):
+        bridge_key = f"{virtual_key}_to_{physical_device_name}"
+        
+        loopback_id = self.active_bridges[bridge_key]
+        
+        try:
+            self.pulse.module_unload(loopback_id)
+            if DEBUG:
+                print(f" [Core] Gizli Bağlantı Söküldü: {bridge_key}")
+
+        except Exception as e:
+            print(f" [Core] Loopback sökülürken hata: {e}")
+
+
+    def update_state(self, key, input_number):
+        hardware_output_key = "input_main" if input_number == 1 else "input_aux"
+        print("update_state: ", key, hardware_output_key)
+
+        if "A1" in key:
+            out_device = Ctx.get("H_Out_A1_id")
+
+
+        elif "A2" in key:
+            out_device = Ctx.get("H_Out_A2_id")
+
+
+        elif "A3" in key:
+            out_device = Ctx.get("H_Out_A3_id")
+        
+        else:
+            out_device = None
+        
+        if out_device is None:
+            return
+            
+        task = self.route_virtual_to_physical_async(hardware_output_key, out_device)
+        asyncio.create_task(task)
+
+
+    def save_callback_state(self):
+        callback_list = ["A1", "A2", "A3", "air", "B1", "B2"]
+        for i in range(2):
+            for callback in callback_list:
+                name = f"s_{i+4}_{callback}"
+                
+                Ctx.add_callback(
+                    name, 
+                    lambda n=name, current_i=i: self.update_state(n, current_i + 1)
+                )
 
     def _clean(self):
         try:
             for k, v in json.load(open(self.f)).items():
-                if not v: continue
+                if not v:
+                    continue
+
                 for m in [int(x) for x in str(v).split(",")]:
                     if m in [x.index for x in self.pulse.module_list()]:
-                        try: self.pulse.module_unload(m)
-                        except: pass
+                        try:
+                            self.pulse.module_unload(m)
+
+                        except:
+                            pass
+                        
             os.remove(self.f)
-        except: pass
+        except:
+            pass
 
 class Watcher:
     def __init__(self, core, callback):
@@ -101,6 +189,7 @@ class Watcher:
                     count = bs.value // 4
                     floats = struct.unpack(f"{count}f", c.string_at(buff, bs.value))
                     peak_ref[0] = max(peak_ref[0], max(floats))
+
             finally:
                 if bs.value: 
                     c.pa.stream_drop(s)

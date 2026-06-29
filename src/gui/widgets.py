@@ -1341,6 +1341,11 @@ class AudioDeviceDialog(QDialog):
         if self.device_list.count() > 0:
             self.device_list.setCurrentRow(0)
 
+    def index_to_device_id(self, index):
+        for dev in DevicesManager.get_physical_sinks():
+            if dev.index == index:
+                return dev.name
+
     def index_to_name(self, index):
         for dev in DevicesManager.get_physical_sinks():
             if dev.index == index:
@@ -1378,14 +1383,19 @@ class Select_hardware_output_buttons(QWidget):
         popup = AudioDeviceDialog(self)
         if popup.exec() == QDialog.Accepted:
             device_name = popup.index_to_name(popup.selected_device)
+            device_id = popup.index_to_device_id(popup.selected_device)
+
             ctx_name = f"H_Out_A{self.slider_number}"
+            ctx_r_name = f"H_Out_A{self.slider_number}_id"
 
             self.clear_other(device_name)
 
             if Ctx[ctx_name] == device_name:
                 Ctx[ctx_name] = ""
+                Ctx[ctx_r_name] = None
                 return
-
+            
+            Ctx[ctx_r_name] = device_id
             Ctx[ctx_name] = device_name
         else:
             print("\ncancel.\n")
@@ -1542,8 +1552,8 @@ class VirtualInputsContainer(QWidget):
         self.layout.setSpacing(0)
         self.layout.setContentsMargins(0, 0, 0, 0)
         
-        self.vaio_text = "Voicemeeter VAIO"
-        self.aux_text = "Voicemeeter AUX"
+        self.vaio_text = "AudioMeeter VAIO"
+        self.aux_text = "AudioMeeter AUX"
         
         self.setMinimumSize(200, 80)
         
