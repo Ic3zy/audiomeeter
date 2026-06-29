@@ -9,11 +9,14 @@ import asyncio
 
 from PySide6.QtCore import QTimer
 from qasync import QEventLoop
+from base import Ctx
 
 
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
+        Ctx["window"] = self
+
         self.styler = Styler()
         self.setWindowTitle("Audiomeeter")
         self.setFixedSize(900, 545)
@@ -36,6 +39,8 @@ class Window(QMainWindow):
         self.panel_layout = QHBoxLayout(self.panel_widget) 
         self.panel_layout.setContentsMargins(0, 0, 0, 0) 
         self.panel_layout.setSpacing(0)
+
+        print("ctx window: ")
         
         self.panel_layout.addWidget(Mic_pannel())
         self.panel_layout.addWidget(Virtual_input_panel())

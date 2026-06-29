@@ -1,17 +1,18 @@
-from PySide6.QtWidgets import (
-    QSlider, QStyleOptionSlider,
-    QStyle, QWidget, QAbstractButton,
-    QVBoxLayout, QHBoxLayout, QSizePolicy, QStyleOption
-)
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygon
-from PySide6.QtCore import Qt, QPropertyAnimation, Property, Signal, QEvent, QRect, QPoint
+import asyncio
+import math
+
+from PySide6.QtCore import (Property, QEvent, QPoint, QPropertyAnimation, QRect,
+                            Signal, Qt)
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPolygon, QPen
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog,
+                               QHBoxLayout, QLabel, QListWidget,
+                               QListWidgetItem, QMainWindow, QPushButton,
+                               QSizePolicy, QSlider, QStyle, QStyleOption,
+                               QStyleOptionSlider, QVBoxLayout, QWidget)
 
 from .styler import Styler
 from base import Ctx
-import math
-import asyncio
-import random
-
+from core import DevicesManager
 
 # TODO: replace real IntelliPannel
 class IntelliPannel(QWidget):
@@ -1251,17 +1252,149 @@ class Hardware_panel(QWidget):
         self.sliders = Hardware_sliders()
         self.layout.addWidget(self.sliders)
 
+# ---- select hardware out ----
+class AudioDeviceDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Ses Cihazı Seçimi")
+        self.setFixedSize(320, 280)
+        
+        self.selected_device = None
+
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1e1e24;
+                border: 1px solid #323242;
+            }
+            QLabel {
+                color: #a0a0b8;
+                font-family: 'Arial';
+                font-size: 11px;
+            }
+            QListWidget {
+                background-color: #121216;
+                border: 1px solid #2d2d3d;
+                border-radius: 6px;
+                color: #ffffff;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-radius: 4px;
+                margin-bottom: 2px;
+            }
+            QListWidget::item:hover {
+                background-color: #252530;
+                color: #00f2fe;
+            }
+            QListWidget::item:selected {
+                background-color: #0575e6;
+                color: #ffffff;
+                font-weight: bold;
+            }
+            QPushButton {
+                background-color: #252533;
+                color: #ffffff;
+                border: 1px solid #3d3d52;
+                border-radius: 4px;
+                padding: 7px 15px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #0575e6;
+                border-color: #00f2fe;
+            }
+        """)
+
+        layout = QVBoxLayout()
+        
+        self.label = QLabel("Select Output Device", self)
+        layout.addWidget(self.label)
+        
+        self.device_list = QListWidget(self)
+        layout.addWidget(self.device_list)
+        
+        self.load_devices()
+
+        btn_layout = QHBoxLayout()
+        
+        self.cancel_btn = QPushButton("Cancel", self)
+        self.cancel_btn.clicked.connect(self.reject)
+        
+        self.select_btn = QPushButton("Select", self)
+        self.select_btn.clicked.connect(self.accept_selection)
+        
+        btn_layout.addWidget(self.cancel_btn)
+        btn_layout.addWidget(self.select_btn)
+        layout.addLayout(btn_layout)
+        
+        self.setLayout(layout)
+
+    def load_devices(self):
+        devices = DevicesManager.get_physical_sinks()
+        
+        for dev in devices:
+            item = QListWidgetItem(dev.description)
+            item.setData(Qt.UserRole, dev.index)
+            self.device_list.addItem(item)
+            
+        if self.device_list.count() > 0:
+            self.device_list.setCurrentRow(0)
+
+    def index_to_name(self, index):
+        for dev in DevicesManager.get_physical_sinks():
+            if dev.index == index:
+                return dev.description
+
+    def accept_selection(self):
+        current_item = self.device_list.currentItem()
+        if current_item:
+            self.selected_device = current_item.data(Qt.UserRole)
+            self.accept()
+
 
 # ---- title bar ----
 class Select_hardware_output_buttons(QWidget):
     def __init__(self, parent=None, slider_number=1):
         super().__init__(parent)
+        self.slider_number = slider_number
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(0)
         self.layout.setContentsMargins(0, 0, 0, 0)
         
         self.setFixedSize(25, 35) 
         self.text = f"A{slider_number}"
+
+    def clear_other(self, name):
+        others = []
+        for _ in range(3):
+            ctx_name = f"H_Out_A{_+1}"
+            if Ctx[ctx_name] == name:
+                Ctx[ctx_name] = ""
+        
+        return others
+
+    def on_widget_clicked(self):
+        popup = AudioDeviceDialog(self)
+        if popup.exec() == QDialog.Accepted:
+            device_name = popup.index_to_name(popup.selected_device)
+            ctx_name = f"H_Out_A{self.slider_number}"
+
+            self.clear_other(device_name)
+
+            if Ctx[ctx_name] == device_name:
+                Ctx[ctx_name] = ""
+                return
+
+            Ctx[ctx_name] = device_name
+        else:
+            print("\ncancel.\n")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.on_widget_clicked()
+
+        event.accept()
     
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -1319,19 +1452,38 @@ class H_o_button_container(QWidget):
 class Hardware_output_text(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.layout = QHBoxLayout(self)
-        self.layout.setSpacing(0)
-        self.layout.setContentsMargins(0, 0, 0, 0)
         
-        self.device_a1_text = "Headset Earphone (Jabra BIZ 2300)"
-        self.device_a2_text = "Speakers (High Definition Audio Device)"
-        self.setMinimumSize(220, 50)
-        
+        self.device_a1_text = "Select Output Device"
+        self.device_a2_text = ""
+        self.device_a3_text = ""
+
+        for i in range(3):
+            name = f"H_Out_A{i+1}"
+            Ctx[name] = ""
+            Ctx.add_callback(name, self.update_device_text)
+
+        self.setFixedSize(220, 70)
+
+    def update_device_text(self):
+        for i in range(3):
+            name = f"H_Out_A{i+1}"
+            if Ctx.get(name) is None:
+                print("cannot find", name)
+                continue
+
+            if Ctx[name] == "" and i == 0:
+                Ctx[name] = "Select Output Device"
+
+            self.set_device_text(f"A{i+1}", Ctx[name])
+
     def set_device_text(self, output_key, new_text):
         if output_key == "A1":
             self.device_a1_text = new_text
         elif output_key == "A2":
             self.device_a2_text = new_text
+        elif output_key == "A3":
+            self.device_a3_text = new_text
+
         self.update()
 
     def paintEvent(self, event):
@@ -1339,8 +1491,6 @@ class Hardware_output_text(QWidget):
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
         w_rect = self.rect()
-        top_offset = 0  
-
         padding_left = 6
         content_width = w_rect.width() - (padding_left * 2)
 
@@ -1350,36 +1500,40 @@ class Hardware_output_text(QWidget):
         painter.setFont(font_title)
         painter.setPen(QPen(QColor("#8faac2")))
 
-        rect_title = QRect(w_rect.left() + padding_left, w_rect.top() + top_offset, content_width, 14)
+        y = 2 
+        rect_title = QRect(padding_left, y, content_width, 14)
         painter.drawText(rect_title, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "HARDWARE OUT")
+        y += 15
 
         font_device = QFont("Arial")
         font_device.setPixelSize(10)
         font_device.setWeight(QFont.Weight.Normal)
         painter.setFont(font_device)
-        painter.setPen(QPen(QColor("#d1d1d6"))) 
+        painter.setPen(QPen(QColor("#d1d1d6")))
 
-        rect_a1 = QRect(w_rect.left() + padding_left, rect_title.bottom() + 1, content_width, 13)
-        painter.drawText(rect_a1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.device_a1_text)
+        texts = [self.device_a1_text, self.device_a2_text, self.device_a3_text]
+        for text in texts:
+            if text:
+                rect = QRect(padding_left, y, content_width, 13)
+                painter.drawText(rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+            y += 14
 
-        rect_a2 = QRect(w_rect.left() + padding_left, rect_a1.bottom() + 1, content_width, 13)
-        painter.drawText(rect_a2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.device_a2_text)
-
-        painter.end()
 
 class Select_h_i_container(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(6)
-        self.layout.setContentsMargins(10, 14, 5, 0)
+        # self.layout.setContentsMargins(10, 14, 5, 0)
+        self.setFixedHeight(200)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
 
         self.h_o_button_container = H_o_button_container(self)
-        self.hardware_text = Hardware_output_text(self)
+        self.hardware_text = Hardware_output_text(Ctx["window"])
+        self.hardware_text.move(720,30)
 
         self.layout.addWidget(self.h_o_button_container, alignment=Qt.AlignmentFlag.AlignTop)
-        self.layout.addWidget(self.hardware_text, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
+        # self.layout.addWidget(self.hardware_text,  alignment=Qt.AlignmentFlag.AlignTop)
 
 class VirtualInputsContainer(QWidget):
     def __init__(self, parent=None):
