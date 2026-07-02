@@ -6,6 +6,8 @@ from qasync import QEventLoop
 from gui import Window
 from core import Engine
 
+import core.cython_core.audio_core
+
 def main():
     app = QApplication(sys.argv)
     

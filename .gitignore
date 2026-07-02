@@ -2,3 +2,5 @@
 __pycache__/
 *_test.py
 audiomeeter_session.json
+build
+*.so
