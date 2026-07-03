@@ -6,9 +6,10 @@ import sys
 from libc.stdint cimport uint32_t, uint8_t, int16_t
 from libc.stddef cimport size_t
 from libc.stdlib cimport malloc, free
-from libc.stdio cimport printf
+from libc.stdio cimport printf, fflush, stdout
 from libc.math cimport log10, sqrt
 from libc.string cimport memset
+from libc.stdint cimport int64_t
 
 cdef extern from "<time.h>" nogil:
     ctypedef long time_t
@@ -61,15 +62,28 @@ cdef extern from "pulse/pulseaudio.h" nogil:
     int pa_stream_drop(pa_stream * )
     int pa_stream_get_state(pa_stream * )
 
+    int pa_stream_begin_write(pa_stream* s, void** data, size_t* nbytes) noexcept nogil
+    int pa_stream_write(pa_stream* s, const void* data, size_t nbytes, void (*free_cb)(void*), int64_t offset, int seek) noexcept nogil
+
 cdef extern from "pulse/sample.h":
     cdef int PA_SAMPLE_S16LE
+
+cdef extern from "pulse/def.h":
+    cdef enum pa_seek_mode:
+        PA_SEEK_RELATIVE
 
 cdef int PA_CONTEXT_READY = 4
 cdef int PA_STREAM_READY = 2
 
-cdef enum: MAX_DEVICES = 32
+DEF MAX_DEVICES = 32
+DEF MAX_ROUTES_PER_DEVICE = 8
+DEF MAX_NAME_LEN = 32
 
 cdef int callback_interval_steps = 100
+
+cdef struct DeviceBridge:
+    char target_sink_names[MAX_ROUTES_PER_DEVICE][MAX_NAME_LEN]
+    int active_route_count
 
 cdef struct AudioCore:
     pa_threaded_mainloop * mainloop
@@ -84,6 +98,7 @@ cdef struct AudioCore:
 
 cdef struct AudioManager:
     AudioCore * devices[MAX_DEVICES]
+    DeviceBridge bridges[MAX_DEVICES]
     int step_counter
 
     # debug
@@ -91,6 +106,24 @@ cdef struct AudioManager:
     int is_init
 
 cdef AudioManager * manager = NULL
+
+cdef int add_single_sink_to_bridge(int v_device_id, SinkDevice sink) noexcept:
+    if manager == NULL or v_device_id < 0 or v_device_id >= MAX_DEVICES:
+        return -3
+    
+    cdef int i
+    cdef int count = manager.bridges[v_device_id].active_route_count
+    
+    for i in range(count):
+        if manager.bridges[v_device_id].target_sinks[i].id == sink.id:
+            return -2
+    
+    if count < MAX_ROUTES_PER_DEVICE:
+        manager.bridges[v_device_id].target_sinks[count] = sink
+        manager.bridges[v_device_id].active_route_count += 1
+        return 0
+    
+    return -1
 
 cdef void context_state_callback(pa_context * context, void * userdata) noexcept nogil:
     pass
@@ -183,6 +216,20 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
     pa_stream_drop(stream)
 
 
+cdef void stream_write_callback(pa_stream *stream, size_t nbytes, void *userdata) noexcept nogil:
+    cdef AudioCore *core = <AudioCore *>userdata
+    cdef void *buffer = NULL
+    
+    if core == NULL or core.is_active == 0:
+        return
+
+    if pa_stream_begin_write(stream, &buffer, &nbytes) < 0:
+        return
+
+    memset(buffer, 0, nbytes)
+
+    pa_stream_write(stream, buffer, nbytes, NULL, 0, PA_SEEK_RELATIVE)
+
 cdef class AudioRecorder:
     cdef AudioCore * core
 
@@ -265,12 +312,19 @@ cdef class AudioRecorder:
 
             if attr != NULL:
                 free(attr)
-
+            
+    
+    # TODO: replace with public cdef double
     @property
     def dB(self):
         return self.core.current_db
 
     def stop(self):
+        printf("stop called\n")
+        fflush(stdout)
+        if self.core == NULL:
+            return
+
         with nogil:
             self.core.is_active = 0
             if self.core.mainloop:
@@ -295,6 +349,136 @@ cdef class AudioRecorder:
                 manager.devices[self.core.instance_id] = NULL
             free(self.core)
 
+
+
+cdef class SinkDevice:
+    cdef AudioCore* core
+    cdef bytes device_id
+    cdef int instance_id
+
+    def __cinit__(self, bytes device_id, int instance_id):
+        self.device_id = device_id
+        self.instance_id = instance_id
+        self.core = NULL 
+    
+    cdef void write(self, const void * data, size_t length) noexcept nogil:
+        if self.core == NULL or self.core.is_active == 0:
+            return
+            
+        if self.core.stream == NULL or pa_stream_get_state(self.core.stream) != PA_STREAM_READY:
+            return
+
+        pa_stream_write(self.core.stream, data, length, NULL, 0, PA_SEEK_RELATIVE)
+
+# two key = value
+cdef class BridgeManager:
+    cdef public dict by_name
+    cdef public dict by_id
+    cdef public dict name_to_id_dict
+
+    def __cinit__(self):
+        self.by_name = {}
+        self.by_id = {}
+        self.name_to_id_dict = {}
+
+    def register(self, str name, str device_id, object instance):
+        self.by_name[name] = instance
+        self.by_id[device_id] = instance
+        self.name_to_id_dict[name] = device_id
+
+    def get_balanced(self, object key):
+        return self.by_name.get(key) or self.by_id.get(key)
+    
+    def get_by_name(self, str name):
+        return self.by_name.get(name)
+    
+    def get_by_id(self, str device_id):
+        return self.by_id.get(device_id)
+    
+    def name_to_id(self, str name):
+        return self.name_to_id_dict.get(name)
+
+    def unregister(self, str name, str device_id):
+        self.by_name.pop(name, None)
+        self.by_id.pop(device_id, None)
+        self.name_to_id_dict.pop(name, None)
+        
+
+class Distributor:
+    def __init__(self):
+        # AudioRecorder devices
+        self.devices = BridgeManager()
+        # Output sink devices
+        self.sinks = BridgeManager()
+        self.last_instance_id = 0
+
+    # The device name is used as an identifier when establishing audio bridges.
+    # It must be unique; no two devices can share the same name.
+    # This name is not tied to any hardware spec and is defined on the Python side.
+    # Unlike the device_id, it does not need to be fetched from a specific system path.
+    def create_sink(self, device_id, device_name):
+        try:
+            sink = SinkDevice(device_id, self.last_instance_id)
+        except Exception as e:
+            return None
+        
+        self.sinks.register(device_name, device_id, sink)
+        self.last_instance_id += 1
+        return sink
+    
+    def create_listen_device(self, str device_id, str device_name):
+        try:
+            # convert to bytes
+            listen = AudioRecorder(device_id.encode('utf-8'), self.last_instance_id)
+            
+            self.devices.register(device_name, device_id, listen)
+            
+            self.last_instance_id += 1
+            
+            return listen
+            
+        except Exception as e:
+            print(f"listen error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def get_dB_by_name(self, name, sink=False):
+        if sink:
+            sink_obj = self.sinks.get_by_name(name)
+            if sink_obj is None:
+                raise ValueError(f"Sink not found: {name}")
+
+            return sink_obj.dB
+        else:
+            listen_obj = self.devices.get_by_name(name)
+            if listen_obj is None:
+                raise ValueError(f"Listen not found: {name}")
+            
+            return listen_obj.dB
+
+
+    def create_bridge(self, str device_name, str sink_name):
+        sink_obj = self.sinks.get_by_name(sink_name)
+        if sink_obj is None:
+            raise ValueError(f"Sink not found: {sink_name}")
+        
+        listen_id = self.devices.name_to_id(device_name)
+        if listen_id is None:
+            raise ValueError(f"Listen not found: {device_name}")
+            
+        if listen_id < 0 or listen_id >= MAX_DEVICES:
+            raise IndexError("Listen ID out of bounds")
+
+        res = add_single_sink_to_bridge(listen_id, <SinkDevice>sink_obj)
+        
+        if res == -1:
+            raise OverflowError(f"Maximum route limit ({MAX_ROUTES_PER_DEVICE}) reached for this device!")
+        elif res == -2:
+            raise ValueError(f"Device '{sink_name}' is already routed to this bridge.")
+        elif res == -3:
+            raise RuntimeError("Invalid audio manager pointer or device ID.")
+        
 
 def init_audio_system():
     global manager

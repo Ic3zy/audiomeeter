@@ -11,49 +11,33 @@ from base import Ctx
 from core.cython_core.audio_core import (
     init_audio_system,
     free_audio_system,
-    AudioRecorder
+    AudioRecorder,
+    Distributor
 )
 
 import time
 async def tasks():
-    init_audio_system()
-
-    mic_device = b"alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H7-00.analog-stereo.monitor"
-    speaker_device = b"alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H7-00.analog-stereo.monitor"
-
-    mic_recorder = AudioRecorder(mic_device, instance_id=1)
-    speaker_recorder = AudioRecorder(speaker_device, instance_id=2)
-
-    mic_recorder.start()
-    speaker_recorder.start()
-    count = 0 
-
+    print("tasks started")
     try:
-        while True:
-            await asyncio.sleep(0.2)
-            print(f"Mic dB: {mic_recorder.dB} | Speaker dB: {speaker_recorder.dB}")
-            count += 1
+        init_audio_system()
+        devices = ["input_main", "input_aux"]
+        name_to_id = {"input_main": "alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H7-00.analog-stereo.monitor", "input_aux": "audiomeeter-aux-input.monitor"}
 
-            if count > 5:
-                t1 = time.perf_counter()
-                Ctx["input_aux"] = mic_recorder.dB
-                Ctx["input_main"] = mic_recorder.dB
-                t2 = time.perf_counter()
-                print(f"\n\n\n\naux: {t2 - t1}")
-                count = 0
-            else:
-                Ctx["input_aux"] = mic_recorder.dB
-
-    except KeyboardInterrupt:
-        return
+        distributor = Ctx["distributor"]
+        devicess = []
+        for device in devices:
+            print(f"device: {device}, id: {name_to_id[device]}")
+            a = distributor.create_listen_device(name_to_id[device], device)
+            a.start()
+            devicess.append(a)
+        print(f"devices: {devicess}")
+    except Exception as e:
+        print(f"tasks error: {e}")
     finally:
-        mic_recorder.stop()
-        speaker_recorder.stop()
-        free_audio_system()
-
-
+        print("tasks finished")
 
 def main():
+    Ctx["distributor"] = Distributor()
     app = QApplication(sys.argv)
     
     loop = QEventLoop(app)
