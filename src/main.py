@@ -24,20 +24,32 @@ async def tasks():
         name_to_id = {"input_aux": "audiomeeter-aux-input.monitor"}
 
         distributor = Ctx["distributor"]
-        devicess = []
+        b = None
         for device in devices:
             print(f"device: {device}, id: {name_to_id[device]}")
             a = distributor.create_listen_device(name_to_id[device], device)
             a.start()
-            devicess.append(a)
+            b = a
             break
 
         a = distributor.create_sink("alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H7-00.iec958-stereo", "a1")
         # a.listen_loop()
         distributor.create_bridge("input_aux", "a1")
+        last_db_sink = 0
+        last_db_aux = 0
         while True:
-            # db = a.get_dB()
-            # print(f"db: {db}")
+            dbsink = a.get_dB()
+            if dbsink != last_db_sink:
+                last_db_sink = dbsink
+                Ctx["s_led_6"] = dbsink
+
+            dbaux = b.dB
+            if dbaux != last_db_aux:
+                last_db_aux = dbaux
+                Ctx["input_aux"] = dbaux
+                print(f"dbaux: {dbaux}")
+
+                
             await asyncio.sleep(0.2)
 
         print(f"devices: {devicess}")

@@ -96,7 +96,7 @@ cdef struct Sink_Core:
     char device_id[128]
     int instance_id
     int dB_counter
-    double dB
+    int dB
     pa_stream * stream
 
 cdef struct DeviceBridge:
@@ -176,7 +176,7 @@ cdef inline int rms_to_db(double rms) noexcept nogil:
     return < int > db
 
 
-cdef inline void route_audio(int src_id, const void * data, size_t length) noexcept nogil:
+cdef inline void route_audio(int src_id, const void * data, size_t length, int db) noexcept nogil:
     if manager == NULL or src_id < 0 or src_id >= MAX_DEVICES:
         return
     
@@ -191,8 +191,7 @@ cdef inline void route_audio(int src_id, const void * data, size_t length) noexc
         current_sink = bridge.target_sinks[i]
         
         if current_sink != NULL:
-            write(current_sink, data, length, current_sink.dB)
-    
+            write(current_sink, data, length, db)
 
 # main audio read callback
 # stream, 221 call / sec per device
@@ -201,6 +200,7 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
     cdef const void * data = NULL
     cdef size_t data_length = 0
     cdef double rms = 0.0
+    cdef int db = 0
 
     cdef timespec now
 
@@ -235,8 +235,10 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
                 manager.is_init = 1
 
             rms = calculate_rms(< int16_t*>data, data_length  // sizeof(int16_t))
+            
+            db = rms_to_db(rms)
 
-            current_core.current_db = rms_to_db(rms)
+            current_core.current_db = db
 
             manager.step_counter = 0
 
@@ -249,7 +251,7 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
         else:
             manager.step_counter += 1
 
-        route_audio(current_core.instance_id, data, data_length)
+        route_audio(current_core.instance_id, data, data_length, db)
 
     pa_stream_drop(stream)
 
@@ -306,7 +308,7 @@ cdef class AudioRecorder:
         manager.devices[instance_id] = self.core
 
     def start(self):
-        cdef int stream_flags = 2
+        cdef int stream_flags = 0x0200 | 0x2000  # 0x0200 = DONT_MOVE, 0x2000 = ADJUST_LATENCY
 
         cdef pa_buffer_attr * attr = NULL
 
@@ -400,7 +402,7 @@ cdef class SinkDevice:
             
         snprintf(self.core.device_id, sizeof(self.core.device_id), "%s", device_id)
         self.core.instance_id = instance_id
-        self.core.dB = -200.0
+        self.core.dB = -200
         
         if manager == NULL or manager.context == NULL:
             print("error: not initialized manager")
@@ -417,8 +419,7 @@ cdef class SinkDevice:
             return
 
 
-        # Unmuted flag
-        cdef int stream_flags = 0x0002
+        cdef int stream_flags = 0x0200 | 0x2000 
 
         cdef int result = pa_stream_connect_playback(
             self.core.stream, 
@@ -436,7 +437,7 @@ cdef class SinkDevice:
     def get_dB(self):
         return self.core.dB
 
-cdef void write(Sink_Core * core, const void * data, size_t length, double dB) noexcept nogil:
+cdef void write(Sink_Core * core, const void * data, size_t length, int dB) noexcept nogil:
     if core.dB_counter >= 100:
         core.dB = dB
         core.dB_counter = 0
