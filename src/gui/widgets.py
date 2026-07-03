@@ -1075,6 +1075,8 @@ class HardwareLedVM(QWidget):
         self.current_value = max(0.0, min(1.0, val))
         self.update()
 
+
+    # TODO: optimize 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

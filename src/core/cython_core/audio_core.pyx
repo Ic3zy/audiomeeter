@@ -31,15 +31,16 @@ cdef extern from "pulse/pulseaudio.h" nogil:
     ctypedef struct pa_buffer_attr:
         uint32_t maxlength, tlength, prebuf, minreq, fragsize
 
-    ctypedef struct pa_mainloop
+    ctypedef struct pa_threaded_mainloop
     ctypedef struct pa_mainloop_api
     ctypedef struct pa_context
     ctypedef struct pa_stream
 
-    pa_mainloop * pa_mainloop_new()
-    pa_mainloop_api * pa_mainloop_get_api(pa_mainloop *)
-    int pa_mainloop_iterate(pa_mainloop * , int, int*)
-    void pa_mainloop_free(pa_mainloop * )
+    pa_threaded_mainloop * pa_threaded_mainloop_new()
+    pa_mainloop_api * pa_threaded_mainloop_get_api(pa_threaded_mainloop *)
+    int pa_threaded_mainloop_start(pa_threaded_mainloop *)
+    void pa_threaded_mainloop_stop(pa_threaded_mainloop *)
+    void pa_threaded_mainloop_free(pa_threaded_mainloop *)
 
     pa_context * pa_context_new(pa_mainloop_api *, const char*)
     int pa_context_connect(pa_context * , const char*, int, void*)
@@ -71,7 +72,7 @@ cdef enum: MAX_DEVICES = 32
 cdef int callback_interval_steps = 100
 
 cdef struct AudioCore:
-    pa_mainloop * mainloop
+    pa_threaded_mainloop * mainloop
     pa_mainloop_api * mainloop_api
     pa_context * context
     pa_stream * stream
@@ -225,8 +226,8 @@ cdef class AudioRecorder:
         cdef pa_buffer_attr * attr = NULL
 
         with nogil:
-            self.core.mainloop = pa_mainloop_new()
-            self.core.mainloop_api = pa_mainloop_get_api(self.core.mainloop)
+            self.core.mainloop = pa_threaded_mainloop_new()
+            self.core.mainloop_api = pa_threaded_mainloop_get_api(self.core.mainloop)
 
             self.core.context = pa_context_new(
                 self.core.mainloop_api, b"CythonAudioRecorder")
@@ -234,8 +235,10 @@ cdef class AudioRecorder:
                 self.core.context, context_state_callback, NULL)
             pa_context_connect(self.core.context, NULL, 0, NULL)
 
+            pa_threaded_mainloop_start(self.core.mainloop)
+
             while pa_context_get_state(self.core.context) != PA_CONTEXT_READY:
-                pa_mainloop_iterate(self.core.mainloop, 1, NULL)
+                pass
 
             self.core.stream = pa_stream_new(self.core.context, b"RecordStream", & self.core.ss, NULL)
             pa_stream_set_read_callback(self.core.stream, stream_read_callback, < void * >self.core)
@@ -258,20 +261,20 @@ cdef class AudioRecorder:
                 stream_flags)
 
             while pa_stream_get_state(self.core.stream) != PA_STREAM_READY:
-                pa_mainloop_iterate(self.core.mainloop, 1, NULL)
+                pass
 
             if attr != NULL:
                 free(attr)
 
-    def listen_loop(self):
-        with nogil:
-            while True:
-                if pa_mainloop_iterate(self.core.mainloop, 1, NULL) < 0:
-                    break
+    @property
+    def dB(self):
+        return self.core.current_db
 
     def stop(self):
         with nogil:
             self.core.is_active = 0
+            if self.core.mainloop:
+                pa_threaded_mainloop_stop(self.core.mainloop)
             if self.core.stream:
                 pa_stream_disconnect(self.core.stream)
                 pa_stream_unref(self.core.stream)
@@ -281,7 +284,7 @@ cdef class AudioRecorder:
                 pa_context_unref(self.core.context)
                 self.core.context = NULL
             if self.core.mainloop:
-                pa_mainloop_free(self.core.mainloop)
+                pa_threaded_mainloop_free(self.core.mainloop)
                 self.core.mainloop = NULL
 
     def __dealloc__(self):
@@ -311,6 +314,7 @@ def free_audio_system():
 
 
 def run_test():
+    import time
     init_audio_system()
 
     cdef bytes mic_device = b"alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H7-00.analog-stereo.monitor"
@@ -324,7 +328,10 @@ def run_test():
     speaker_recorder.start()
 
     try:
-        mic_recorder.listen_loop()
+        # pass
+        while True:
+            time.sleep(0.2)
+            print(f"Mic dB: {mic_recorder.dB} | Speaker dB: {speaker_recorder.dB}")
     except KeyboardInterrupt:
         print(
             "\n\nerr.")
@@ -334,4 +341,4 @@ def run_test():
         free_audio_system()
 
 
-run_test()
+# run_test()
