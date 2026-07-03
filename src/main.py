@@ -20,8 +20,8 @@ async def tasks():
     print("tasks started")
     try:
         init_audio_system()
-        devices = ["input_main", "input_aux"]
-        name_to_id = {"input_main": "alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H7-00.analog-stereo.monitor", "input_aux": "audiomeeter-aux-input.monitor"}
+        devices = ["input_aux"]
+        name_to_id = {"input_aux": "audiomeeter-aux-input.monitor"}
 
         distributor = Ctx["distributor"]
         devicess = []
@@ -30,9 +30,21 @@ async def tasks():
             a = distributor.create_listen_device(name_to_id[device], device)
             a.start()
             devicess.append(a)
+            break
+
+        a = distributor.create_sink("alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H7-00.iec958-stereo", "a1")
+        # a.listen_loop()
+        distributor.create_bridge("input_aux", "a1")
+        while True:
+            # db = a.get_dB()
+            # print(f"db: {db}")
+            await asyncio.sleep(0.2)
+
         print(f"devices: {devicess}")
     except Exception as e:
         print(f"tasks error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         print("tasks finished")
 
