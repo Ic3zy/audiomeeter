@@ -2,6 +2,13 @@
 # audio_core.pyx
 # cython: language_level=3
 
+# NOTE:
+# PulseAudio is currently used for rapid prototyping.
+# If the project gains traction or during my free time,
+# both read and write operations will be refactored to interface directly with the ALSA layer.
+# My benchmark (no GUI): CPU: 0.9, RAM: 16-18Mb, per device (no sink). 
+
+
 import sys
 from libc.stdint cimport uint32_t, uint8_t, int16_t
 from libc.stddef cimport size_t
@@ -216,40 +223,15 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
         return
 
     if data_length > 0 and data != NULL:
-        if manager.step_counter >= callback_interval_steps:
+        clock_gettime(CLOCK_MONOTONIC, & manager.last_time)
+        manager.is_init = 1
 
-            if manager.is_init != 0:
-                clock_gettime(CLOCK_MONOTONIC, & now)
-
-                elapsed = (now.tv_sec - manager.last_time.tv_sec) + \
-                    (now.tv_nsec - manager.last_time.tv_nsec) / 1000000000.0
-                printf(
-                    "[%d] Elapsed: %f len: %d \n",
-                    current_core.instance_id,
-                    elapsed,
-                    data_length)
-
-                manager.last_time = now
-            else:
-                clock_gettime(CLOCK_MONOTONIC, & manager.last_time)
-                manager.is_init = 1
-
-            rms = calculate_rms(< int16_t*>data, data_length  // sizeof(int16_t))
+        rms = calculate_rms(< int16_t*>data, data_length  // sizeof(int16_t))
             
-            db = rms_to_db(rms)
+        db = rms_to_db(rms)
 
-            current_core.current_db = db
+        current_core.current_db = db
 
-            manager.step_counter = 0
-
-            printf(
-                "[%d] RMS: %f, DB: %d\n",
-                current_core.instance_id,
-                rms,
-                current_core.current_db)
-
-        else:
-            manager.step_counter += 1
 
         route_audio(current_core.instance_id, data, data_length, db)
 
@@ -339,7 +321,7 @@ cdef class AudioRecorder:
                 attr.prebuf = <uint32_t > -1
                 attr.minreq = <uint32_t > -1
 
-                attr.fragsize = 128 * 2 * 2
+                attr.fragsize = 128  * 2
 
             pa_stream_connect_record(
                 self.core.stream,
