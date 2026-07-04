@@ -18,6 +18,7 @@ from libc.math cimport log10, sqrt
 from libc.string cimport memset
 from libc.stdint cimport int64_t
 from libc.stdint cimport uintptr_t
+from libc.string cimport strcmp, strncpy
 
 cdef extern from "<time.h>" nogil:
     ctypedef long time_t
@@ -156,6 +157,25 @@ cdef int add_single_sink_to_bridge(int v_device_id, Sink_Core * sink) noexcept:
         return 0
     
     return -1 
+
+cdef int remove_single_sink_from_bridge(int v_device_id, char* device_id) noexcept:
+    if manager == NULL:
+        return -3
+    
+
+    if v_device_id < 0 or v_device_id >= MAX_DEVICES or device_id == NULL:
+        return -3
+    
+    cdef int i
+    cdef int count = manager.bridges[v_device_id].active_route_count
+    
+    for i in range(count):
+        if strcmp(manager.bridges[v_device_id].target_sinks[i].device_id, device_id) == 0:
+            manager.bridges[v_device_id].target_sinks[i] = NULL
+            manager.bridges[v_device_id].active_route_count -= 1
+            return 0
+    
+    return -1
 
 cdef void context_state_callback(pa_context * context, void * userdata) noexcept nogil:
     pass
@@ -340,13 +360,14 @@ cdef class AudioRecorder:
     @property
     def dB(self):
         return self.core.current_db
+    
+    def get_dB(self):
+        return self.core.current_db
 
     cpdef get_id(self):
         return self.core.instance_id
 
     def stop(self):
-        printf("stop called\n")
-        fflush(stdout)
         if self.core == NULL:
             return
 
@@ -380,9 +401,11 @@ cdef class SinkDevice:
     def __cinit__(self, bytes device_id, int instance_id):
         self.core = <Sink_Core*>calloc(1, sizeof(Sink_Core))
         if self.core == NULL:
-            raise MemoryError("Sink_Core için RAM doldu!")
-            
-        snprintf(self.core.device_id, sizeof(self.core.device_id), "%s", device_id)
+            raise MemoryError("error: failed to allocate RAM")
+        
+        cdef char * c_device_id = device_id
+        strncpy(self.core.device_id, c_device_id, 127)
+        self.core.device_id[127] = b'\0'
         self.core.instance_id = instance_id
         self.core.dB = -200
         
@@ -415,6 +438,9 @@ cdef class SinkDevice:
         if result < 0:
             print("Hata: Cihaza playback bağlantısı başarısız!")    
 
+
+    def get_device_id(self):
+        return self.core.device_id
 
     def get_dB(self):
         return self.core.dB
@@ -567,6 +593,33 @@ class Distributor:
             raise ValueError(f"Device '{sink_name}' is already routed to this bridge.")
         elif res == -3:
             raise RuntimeError("Invalid audio manager pointer or device ID.")
+
+    def remove_bridge(self, str device_name, str sink_name):
+        cdef SinkDevice sink_obj = self.sinks.get_by_name(sink_name)
+        if sink_obj is None:
+            raise ValueError(f"Sink not found: {sink_name}")
+
+        cdef Sink_Core * sink_core = sink_obj.core
+        if sink_core == NULL:
+            raise ValueError(f"Sink core not found: {sink_name}")
+        
+        sink_core.dB = -200
+
+        cdef char * device_id = sink_core.device_id
+
+        listen = self.devices.get_by_name(device_name)
+        if listen is None:
+            raise ValueError(f"Listen not found: {device_name}")
+        
+        listen_id = listen.get_id()
+        
+        if listen_id < 0 or listen_id >= MAX_DEVICES:
+            raise IndexError("Listen ID out of bounds")
+
+        cdef int res = remove_single_sink_from_bridge(listen_id, device_id)
+        
+        if res < 0:
+            raise ValueError(f"Device '{sink_name}' is not routed to this bridge.")
         
 
 def init_audio_system():

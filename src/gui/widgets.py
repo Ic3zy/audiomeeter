@@ -1048,6 +1048,32 @@ class Virtual_input_panel(QWidget):
         self.layout.addWidget(self.sliders_2)
 
 
+
+
+class Cassette_player(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(150)
+        self.setFixedWidth(240)
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        
+        bg_color = "#132029"
+        
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(bg_color))
+        painter.drawRect(self.rect())
+
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#5b7a8c")))
+        painter.setFont(self.font())
+
+        text_rect = QRect(0, 10, self.width(), 20) 
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "To be continued...")
+
+
+
 # ---- Hardware Output ----
 
 class HardwareLedVM(QWidget):
@@ -1078,10 +1104,10 @@ class HardwareLedVM(QWidget):
         is_plussed = False
         while True:
             if self.current_value <= 0.1:
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.1)
                 continue
 
-            self.current_value += 0.04 if not is_plussed else -0.04
+            self.current_value += 0.02 if not is_plussed else -0.02
             is_plussed = not is_plussed
             self.update()
             await asyncio.sleep(0.1)
@@ -1162,29 +1188,6 @@ class HardwareLedVM(QWidget):
             for j in range(7):
                 x_pos = offset_x + (j * 2)
                 painter.drawRect(x_pos, y_pos, 1, 1)
-
-
-class Cassette_player(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(150)
-        self.setFixedWidth(240)
-    
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        
-        bg_color = "#132029"
-        
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(bg_color))
-        painter.drawRect(self.rect())
-
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor("#5b7a8c")))
-        painter.setFont(self.font())
-
-        text_rect = QRect(0, 10, self.width(), 20) 
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "To be continued...")
 
 
 class Hardware_buttons(QWidget):
