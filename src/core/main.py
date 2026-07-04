@@ -95,6 +95,9 @@ class AudioCore:
         self.distributor = Distributor()
         self.initiliaze_core_devices()
         self.save_sink_device()
+
+        self.archived_routes = []
+
     
     def initiliaze_core_devices(self):
         name_to_id = {"input_aux": "audiomeeter-aux-input.monitor", "input_main": "audiomeeter-input.monitor"}
@@ -104,34 +107,60 @@ class AudioCore:
             a = self.distributor.create_listen_device(id, name)
             a.start()
         
+    def append_archived_route(self, sink_name, v_d_name, s_name):
+        self.archived_routes.append((sink_name, v_d_name, s_name))
+    
+    def get_archived_by_sink_name(self, target_sink_name):
+        for (sink_name, v_d_name, s_name) in self.archived_routes:
+            if sink_name == target_sink_name:
+                return (sink_name, v_d_name, s_name)
+
         
     def route_audio(self, source_id, s_name):
-        sink = Ctx.get(f"H_Out_{s_name}_id")
+        sink_name = f"H_Out_{s_name}_id"
+        sink = Ctx.get(sink_name)
+
+        # virtual device name
+        if isinstance(source_id, int):
+            v_d_name = "input_main" if source_id == 4 else "input_aux"
+
+            if source_id < 4:
+            # no process from mic devices.
+               return
+
+        elif isinstance(source_id, str):
+            v_d_name = source_id
+
+        else:
+            return
 
         # No except
         if sink is None:
+            self.append_archived_route(sink_name, v_d_name, s_name)
             return
 
-        if source_id < 4:
-            # no process from mic devices.
-            return
+ 
 
-        # virtual device name
-        v_d_name = "input_main" if source_id == 4 else "input_aux"
 
         print(f" [AudioCore] route_audio: {v_d_name} -> {s_name}")
         self.distributor.create_bridge(v_d_name, s_name)
     
-    def create_sink(self, device_id, device_name):
+    def create_sink(self, device_id, device_name, sink_name):
+        archived_bridge = self.get_archived_by_sink_name(sink_name)
+            
         print(f" [AudioCore] create_sink: {device_id}, {device_name}")
         self.distributor.create_sink(device_id, device_name)
 
+        if archived_bridge is not None:
+            self.route_audio(archived_bridge[1], device_name)
 
     def save_sink_device(self):
         devices = ["A1", "A2", "A3"]
+        
         for device in devices:
             c_name = f"H_Out_{device}_id"
-            Ctx.add_callback(c_name, lambda c_n=c_name, d=device: self.create_sink(Ctx[c_n], d))
+            Ctx.add_callback(c_name, lambda c_n=c_name, d=device: self.create_sink(Ctx[c_n], d, c_n))
+
             for i in range(5):
                 name = f"s_{i+1}_{device}"
                 Ctx.add_callback(name, lambda n=i+1, d=device: self.route_audio(n, d))
