@@ -169,7 +169,7 @@ class AudioCore:
 
         # No except
         if sink is None:
-            self.append_archived_route(source_id, s_name)
+            self.append_archived_route(source_id, v_d_name, s_name)
             return
 
         print(f" [AudioCore] route_audio: {v_d_name} -> {s_name}")
@@ -189,7 +189,7 @@ class AudioCore:
         self.add_watch_device(sink, device_name, ctx_name)
 
         if archived_bridge is not None:
-            self.route_audio(archived_bridge[1], device_name)
+            self.route_audio(archived_bridge[0], archived_bridge[2])
 
     def save_sink_device(self):
         devices = ["A1", "A2", "A3"]

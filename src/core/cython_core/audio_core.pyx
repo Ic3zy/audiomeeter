@@ -15,7 +15,7 @@ from libc.stddef cimport size_t
 from libc.stdlib cimport malloc, free, calloc
 from libc.stdio cimport printf, fflush, stdout
 from libc.math cimport log10, sqrt
-from libc.string cimport memset
+from libc.string cimport memset, memcpy
 from libc.stdint cimport int64_t
 from libc.stdint cimport uintptr_t
 from libc.string cimport strcmp, strncpy
@@ -66,6 +66,11 @@ cdef extern from "pulse/pulseaudio.h" nogil:
     int pa_stream_connect_record(pa_stream * , const char*, pa_buffer_attr*, int)
     int pa_stream_disconnect(pa_stream * )
     void pa_stream_set_read_callback(pa_stream * , void(*)(pa_stream*, size_t, void*) noexcept nogil, void*)
+    void pa_stream_set_write_callback(
+        pa_stream *p, 
+        void (*cb)(pa_stream *p, size_t nbytes, void *userdata), 
+        void *userdata
+    )
 
     int pa_stream_peek(pa_stream * , const void**, size_t*)
     int pa_stream_drop(pa_stream * )
@@ -96,6 +101,7 @@ cdef int PA_STREAM_READY = 2
 DEF MAX_DEVICES = 32
 DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
+DEF BUFFER_LEN = 1024
 
 cdef int callback_interval_steps = 100
 
@@ -122,6 +128,13 @@ cdef struct AudioCore:
     int is_active
     int current_db
 
+
+# TODO: update this to store buffers by multiple devices
+cdef struct Audio_Buffer:
+    int16_t * samples
+    Sink_Core * sink
+    int update_flag
+
 cdef struct AudioManager:
     pa_threaded_mainloop * mainloop
     pa_context * context
@@ -136,6 +149,7 @@ cdef struct AudioManager:
     int is_init
 
 cdef AudioManager * manager = NULL
+cdef Audio_Buffer * buffers = NULL
 
 cdef int add_single_sink_to_bridge(int v_device_id, Sink_Core * sink) noexcept:
     if manager == NULL or sink == NULL:
@@ -143,6 +157,8 @@ cdef int add_single_sink_to_bridge(int v_device_id, Sink_Core * sink) noexcept:
         
     if v_device_id < 0 or v_device_id >= MAX_DEVICES:
         return -3
+    
+    printf("v_device_id: %d\n", v_device_id)
     
     cdef int i
     cdef int count = manager.bridges[v_device_id].active_route_count
@@ -214,16 +230,22 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
     if bridge == NULL or bridge.active_route_count == 0:
         return
     
-    for i in range(bridge.active_route_count):
-        current_sink = bridge.target_sinks[i]
+    # for i in range(bridge.active_route_count):
+    #     current_sink = bridge.target_sinks[i]
         
-        if current_sink != NULL:
-            write(current_sink, data, length, db)
+    #     if current_sink != NULL:
+    #         write(current_sink, data, length, db)
+
+cdef inline int is_main_device(AudioCore * core) noexcept nogil:
+    if core != NULL and core.instance_id == 0:
+        return 1
+    return 0
 
 # main audio read callback
 # stream, 221 call / sec per device
 cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdata) noexcept nogil:
     cdef AudioCore * current_core = <AudioCore * >userdata
+
     cdef const void * data = NULL
     cdef size_t data_length = 0
     cdef double rms = 0.0
@@ -243,8 +265,12 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
         return
 
     if data_length > 0 and data != NULL:
-        clock_gettime(CLOCK_MONOTONIC, & manager.last_time)
-        manager.is_init = 1
+        # buffer len safety
+        if data_length > BUFFER_LEN * sizeof(int16_t):
+            data_length = BUFFER_LEN * sizeof(int16_t)
+        
+        memcpy(buffers.samples, <const int16_t*>data, <size_t>data_length)
+        buffers.update_flag = 1
 
         rms = calculate_rms(< int16_t*>data, data_length  // sizeof(int16_t))
             
@@ -252,8 +278,10 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
 
         current_core.current_db = db
 
-
         route_audio(current_core.instance_id, data, data_length, db)
+
+        if is_main_device(current_core):
+            core_tick()
 
     pa_stream_drop(stream)
 
@@ -272,6 +300,22 @@ cdef void stream_write_callback(pa_stream *stream, size_t nbytes, void *userdata
 
     pa_stream_write(stream, buffer, nbytes, NULL, 0, PA_SEEK_RELATIVE)
 
+
+# call when a write device needs a buffer.
+
+cdef void core_tick() noexcept nogil:
+    cdef int v_device_id = 0
+    cdef Sink_Core * current_sink = NULL
+
+    current_sink = manager.bridges[v_device_id].target_sinks[0]
+
+    if current_sink != NULL:
+        if buffers.samples != NULL:
+            # write(Sink_Core * core, const void * data, size_t length, int dB)
+            if buffers.update_flag == 1:
+                write(current_sink, <void *>buffers.samples, <size_t>BUFFER_LEN, 0)
+                buffers.update_flag = 0
+    
 cdef class AudioRecorder:
     cdef AudioCore * core
 
@@ -310,26 +354,14 @@ cdef class AudioRecorder:
         manager.devices[instance_id] = self.core
 
     def start(self):
+        manager.devices[self.core.instance_id] = self.core
         cdef int stream_flags = 0x0200 | 0x2000  # 0x0200 = DONT_MOVE, 0x2000 = ADJUST_LATENCY
 
         cdef pa_buffer_attr * attr = NULL
+        cdef int result = 0
 
         with nogil:
-            self.core.mainloop = pa_threaded_mainloop_new()
-            self.core.mainloop_api = pa_threaded_mainloop_get_api(self.core.mainloop)
-
-            self.core.context = pa_context_new(
-                self.core.mainloop_api, b"CythonAudioRecorder")
-            pa_context_set_state_callback(
-                self.core.context, context_state_callback, NULL)
-            pa_context_connect(self.core.context, NULL, 0, NULL)
-
-            pa_threaded_mainloop_start(self.core.mainloop)
-
-            while pa_context_get_state(self.core.context) != PA_CONTEXT_READY:
-                pass
-
-            self.core.stream = pa_stream_new(self.core.context, b"RecordStream", & self.core.ss, NULL)
+            self.core.stream = pa_stream_new(manager.context, b"RecordStream", & self.core.ss, NULL)
             pa_stream_set_read_callback(self.core.stream, stream_read_callback, < void * >self.core)
 
             attr = <pa_buffer_attr * >malloc(sizeof(pa_buffer_attr))
@@ -341,19 +373,22 @@ cdef class AudioRecorder:
                 attr.prebuf = <uint32_t > -1
                 attr.minreq = <uint32_t > -1
 
-                attr.fragsize = 128  * 2
+                attr.fragsize = 128 * 2
 
-            pa_stream_connect_record(
+            result = pa_stream_connect_record(
                 self.core.stream,
                 self.core.device_id,
                 attr,
                 stream_flags)
 
-            while pa_stream_get_state(self.core.stream) != PA_STREAM_READY:
-                pass
+            if result < 0:
+                printf("Hata Record baglantisi basarisiz")
+                if attr != NULL:
+                    free(attr)
 
-            if attr != NULL:
-                free(attr)
+
+            # if attr != NULL:
+            #     free(attr)
             
     
     # TODO: replace with public cdef double
@@ -418,14 +453,14 @@ cdef class SinkDevice:
         ss.rate = 48000
         ss.channels = 2
 
+        buffers.sink = self.core
+
         self.core.stream = pa_stream_new(manager.context, "Audiomeeter-Sink", &ss, NULL)
         if self.core.stream == NULL:
             print("error: not created stream")
             return
 
-
         cdef int stream_flags = 0x0200 | 0x2000 
-
         cdef int result = pa_stream_connect_playback(
             self.core.stream, 
             self.core.device_id,
@@ -434,11 +469,8 @@ cdef class SinkDevice:
             <const void*>NULL,
             <pa_stream*>NULL
         )
+
         
-        if result < 0:
-            print("Hata: Cihaza playback bağlantısı başarısız!")    
-
-
     def get_device_id(self):
         return self.core.device_id
 
@@ -624,8 +656,15 @@ class Distributor:
 
 def init_audio_system():
     global manager
+    global buffers
+
     cdef int i
     cdef pa_mainloop_api * mainloop_api
+
+    if buffers == NULL:
+        # use calloc because malloc does not initialize memory
+        buffers = <Audio_Buffer *>calloc(MAX_DEVICES, sizeof(Audio_Buffer))
+        buffers.samples = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
 
     if manager == NULL:
         manager = <AudioManager *>calloc(1, sizeof(AudioManager))
@@ -646,16 +685,23 @@ def init_audio_system():
         if manager.context == NULL:
             print("Error: Failed to create context!")
             return
+        
 
         pa_context_connect(manager.context, NULL, 0, NULL)
         pa_threaded_mainloop_start(manager.mainloop)
         
+        while pa_context_get_state(manager.context) != PA_CONTEXT_READY:
+            pass
 
 def free_audio_system():
     global manager
+    global buffers
     if manager != NULL:
         free(manager)
         manager = NULL
+    if buffers != NULL:
+        free(buffers)
+        buffers = NULL
 
 
 def run_test():
