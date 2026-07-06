@@ -101,13 +101,27 @@ cdef int PA_STREAM_READY = 2
 DEF MAX_DEVICES = 32
 DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
-DEF BUFFER_LEN = 1024
+DEF BUFFER_LEN = 512
 
 cdef int callback_interval_steps = 100
 
 cdef struct Audio_Buffer:
-    int16_t * samples
-    int update_flag 
+    # the sample queue
+    int16_t * samples[2]
+    int update_flag
+    # last_write and last_read keep track of the most recently written and read buffers.
+    # Losing these indices means losing track of exactly when an audio buffer arrived
+
+    # Instead of constantly reordering the list in RAM, this faster method is used.
+    # Zero-copy queue buffer is copied only once when it first arrives from PulseAudio, then never again.
+    # These optimizations are absolutely critical for the realtime hot path
+
+    # Intentionally delaying the buffer by 128 samples
+    # This buys us 2.66 ms of processing time (roughly 9 million CPU ops on a typical processor)
+    # Obviously nothing comes for free it adds an extra 2.66 ms of latency to the audio stream
+    # But I'd much rather have the user deal with a 2.66 ms delay than experience underruns or overruns
+    int last_read
+    int last_write
 
 cdef struct Sink_Core:
     AudioCore * core
@@ -115,7 +129,8 @@ cdef struct Sink_Core:
     int instance_id
     int dB_counter
     int dB
-    Audio_Buffer input_buffer[MAX_ROUTES_PER_DEVICE]
+    # TODO: multi device support
+    Audio_Buffer input_buffer
     int global_update_flag
     pa_stream * stream
 
@@ -134,8 +149,6 @@ cdef struct AudioCore:
     int is_active
     int current_db
 
-
-
 cdef struct AudioManager:
     pa_threaded_mainloop * mainloop
     pa_context * context
@@ -148,6 +161,8 @@ cdef struct AudioManager:
     # debug
     timespec last_time
     int is_init
+
+    int16_t * temp_data[4]
 
 cdef AudioManager * manager = NULL
 cdef Audio_Buffer * buffers = NULL
@@ -225,27 +240,36 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
         return
     
     cdef DeviceBridge * bridge = &manager.bridges[src_id]
-    cdef int i
     cdef Sink_Core * current_sink = NULL
 
-    if bridge == NULL or bridge.active_route_count == 0:
+    cdef int i
+
+    if not bridge or <unsigned int>src_id >= MAX_DEVICES:
+        return
+
+    if src_id != 0:
         return
     
     for i in range(bridge.active_route_count):
         current_sink = bridge.target_sinks[i]
         
-        if current_sink != NULL:
-            current_sink.global_update_flag = 1
-            current_sink.input_buffer[src_id].update_flag = 1
-
-            memcpy(current_sink.input_buffer[src_id].samples, <const int16_t*>data, length)
-        else:
-            printf("current_sink is null")
-
-
+        if current_sink == NULL:
+            continue
+        
+        current_sink.input_buffer.last_write ^= 1
+        printf("last_write: %d\nactive_route_count: %d\n", current_sink.input_buffer.last_write, bridge.active_route_count)
+        fflush(stdout)
+        # avoids CPU branching. Equivalent to:
+        # if last_write == 1:
+        #     last_write = 0
+        # else:
+        #     last_write = 1
+        
+        memcpy(current_sink.input_buffer.samples[current_sink.input_buffer.last_write], <const int16_t*>data, length)
+        
 
 cdef inline int is_main_device(AudioCore * core) noexcept nogil:
-    if core != NULL and core.instance_id == 0:
+    if core != NULL and core.instance_id == 1:
         return 1
     return 0
 
@@ -253,7 +277,6 @@ cdef inline int is_main_device(AudioCore * core) noexcept nogil:
 # stream, 221 call / sec per device
 cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdata) noexcept nogil:
     cdef AudioCore * current_core = <AudioCore * >userdata
-
     cdef const void * data = NULL
     cdef size_t data_length = 0
     cdef double rms = 0.0
@@ -262,52 +285,65 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
     cdef timespec now
 
     cdef double elapsed = 0.0
+    cdef Sink_Core * current_sink = NULL
+    cdef int temp_step = 0
 
-    if manager == NULL:
-        return
-
-    if current_core == NULL or current_core.is_active == 0:
+    if current_core.is_active == 0:
         return
 
     if pa_stream_peek(stream, & data, & data_length) < 0:
         return
 
-    if data_length > 0 and data != NULL:
-        # buffer len safety
-        if data_length > BUFFER_LEN * sizeof(int16_t):
-            data_length = BUFFER_LEN * sizeof(int16_t)
-        
-        rms = calculate_rms(< int16_t*>data, data_length  // sizeof(int16_t))
+    # if data_length <= 0 and data == NULL:
+    #     pa_stream_drop(stream)
+    #     return
+
+    # buffer len safety
+    if data_length > BUFFER_LEN * sizeof(int16_t):
+        data_length = BUFFER_LEN * sizeof(int16_t)
+
+    rms = calculate_rms(< int16_t*>data, data_length  // sizeof(int16_t))
             
-        db = rms_to_db(rms)
+    db = rms_to_db(rms)
 
-        current_core.current_db = db
+    current_core.current_db = db
 
-        route_audio(current_core.instance_id, data, data_length, db)
+    route_audio(current_core.instance_id, data, data_length, db)
 
-        # BUG: Device 0 will definitely experience a buffer underrun
-        if is_main_device(current_core):
-            core_tick()
+    # BUG: Device 0 will definitely experience a buffer underrun
+    manager.step_counter += 1
+    if manager.is_init < 4:
+        manager.is_init += 1
 
+    if current_core.instance_id == 0:
+        core_tick()
+        manager.step_counter = 0
+    
     pa_stream_drop(stream)
 
-    # call when a write device needs a buffer.
 # TODO: optimize.
 cdef inline void core_tick() noexcept nogil:
     cdef Sink_Core * current_sink = NULL
+    cdef void* buffer = malloc(BUFFER_LEN)
     cdef int i = 0
 
     for i in range(3):
         current_sink = manager.sinks[i]
         if current_sink == NULL:
             continue
+        
+        current_sink.input_buffer.last_read ^= 1
+        printf("last_read: %d\n", current_sink.input_buffer.last_read)
+        fflush(stdout)
+        # avoids CPU branching. Equivalent to:
+        # if last_read == 1:
+        #     last_read = 0
+        # else:
+        #     last_read = 1
+        memcpy(buffer, current_sink.input_buffer.samples[current_sink.input_buffer.last_read], BUFFER_LEN)
+        write(current_sink, buffer, BUFFER_LEN, 0)
 
-        for j in range(MAX_ROUTES_PER_DEVICE):
-            if current_sink.input_buffer[j].samples != NULL and current_sink.input_buffer[j].update_flag == 1:
-                write(current_sink, <void *>current_sink.input_buffer[j].samples, <size_t>BUFFER_LEN, 0)
-                current_sink.input_buffer[j].update_flag = 0
-            
-        current_sink.global_update_flag = 0
+
 
 
 cdef void stream_write_callback(pa_stream *stream, size_t nbytes, void *userdata) noexcept nogil:
@@ -323,9 +359,6 @@ cdef void stream_write_callback(pa_stream *stream, size_t nbytes, void *userdata
     memset(buffer, 0, nbytes)
 
     pa_stream_write(stream, buffer, nbytes, NULL, 0, PA_SEEK_RELATIVE)
-
-
-
 
 
 cdef class AudioRecorder:
@@ -371,6 +404,9 @@ cdef class AudioRecorder:
 
         cdef pa_buffer_attr * attr = NULL
         cdef int result = 0
+        cdef uint32_t target_fragment = 256 * sizeof(int16_t) # 512 Byte
+                
+        cdef uint32_t half_block = 256
 
         with nogil:
             self.core.stream = pa_stream_new(manager.context, b"RecordStream", & self.core.ss, NULL)
@@ -380,12 +416,11 @@ cdef class AudioRecorder:
             if attr != NULL:
                 memset(attr, 0, sizeof(pa_buffer_attr))
 
-                attr.maxlength = <uint32_t > -1
-                attr.tlength = <uint32_t > -1
-                attr.prebuf = <uint32_t > -1
-                attr.minreq = <uint32_t > -1
-
-                attr.fragsize = 128 * 2
+                attr.fragsize = half_block 
+                attr.minreq = half_block
+                attr.tlength = 1024 
+                attr.prebuf = half_block
+                attr.maxlength = 512
 
             result = pa_stream_connect_record(
                 self.core.stream,
@@ -447,10 +482,10 @@ cdef class SinkDevice:
     cdef Sink_Core* core
     def __cinit__(self, bytes device_id, int instance_id):
         self.core = <Sink_Core*>calloc(1, sizeof(Sink_Core))
-        # ram safety
-        for i in range(MAX_ROUTES_PER_DEVICE):
-            self.core.input_buffer[i].samples = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
+        self.core.input_buffer.samples[0] = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
+        self.core.input_buffer.samples[1] = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
 
+        # ram safety
         if self.core == NULL:
             raise MemoryError("error: failed to allocate RAM")
         
@@ -678,13 +713,16 @@ def init_audio_system():
     cdef int i
     cdef pa_mainloop_api * mainloop_api
 
-    if buffers == NULL:
+    # if buffers == NULL:
         # use calloc because malloc does not initialize memory
-        buffers = <Audio_Buffer *>calloc(MAX_DEVICES, sizeof(Audio_Buffer))
-        buffers.samples = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
+        # buffers = <Audio_Buffer *>calloc(MAX_DEVICES, sizeof(Audio_Buffer))
+        # buffers.samples = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
 
     if manager == NULL:
         manager = <AudioManager *>calloc(1, sizeof(AudioManager))
+        for _ in range(4):
+            manager.temp_data[_] = <int16_t *>calloc(1, 768)
+
         if manager == NULL:
             raise MemoryError("Out of memory!")
 
