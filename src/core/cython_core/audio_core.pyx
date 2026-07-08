@@ -10,7 +10,8 @@
 # rewrite it from scratch.
 #
 # TODO:
-# - Implement a proper core tick so all devices are processed using a single master clock.
+# - Implement a proper core tick so all devices are processed using a single master clock. (Done / Implemented via Zero-Copy)
+# - Decibel calculations are currently non-functional and deactivated. Fix this.
 # - Design the audio mixing algorithm.
 # - Implement the gain processing algorithm.
 # - Implement the equalizer (bass, mid, treble) processing algorithm.
@@ -82,6 +83,7 @@ cdef extern from "pulse/pulseaudio.h" nogil:
     int pa_stream_drop(pa_stream * )
     int pa_stream_get_state(pa_stream * )
     int pa_stream_connect_playback(pa_stream * s, const char * dev, pa_buffer_attr * attr, int flags, const void * volume, pa_stream * sync_stream)
+    size_t pa_stream_readable_size(pa_stream* s) nogil
 
     int pa_stream_begin_write(pa_stream* s, void** data, size_t* nbytes) noexcept nogil
     int pa_stream_write(pa_stream* s, const void* data, size_t nbytes, void (*free_cb)(void*), int64_t offset, int seek) noexcept nogil
@@ -109,6 +111,10 @@ DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
 DEF BUFFER_LEN = 512
 
+cdef struct Buffer:
+    int16_t samples[BUFFER_LEN]
+    int updateable
+
 cdef struct Sink_Core:
     AudioCore * core
     pa_stream * stream
@@ -116,6 +122,7 @@ cdef struct Sink_Core:
     int instance_id
     int dB_counter
     int dB
+    Buffer buffers[MAX_DEVICES]
 
 cdef struct DeviceBridge:
     Sink_Core * target_sinks[MAX_ROUTES_PER_DEVICE]
@@ -127,17 +134,20 @@ cdef struct AudioCore:
     pa_context * context
     pa_stream * stream
     pa_sample_spec ss
+
+    Sink_Core * bridged_sinks[MAX_ROUTES_PER_DEVICE]
+    int active_bridge_count
+
     char device_id[256]
     int instance_id
     int is_active
     int current_db
     int is_main_device # only 0 or 1
-
+    
 cdef struct AudioManager:
     pa_threaded_mainloop * mainloop
     pa_context * context
     AudioCore * devices[MAX_DEVICES]
-    DeviceBridge bridges[MAX_DEVICES]
     Sink_Core * sinks[MAX_DEVICES]
 
 cdef AudioManager * manager = NULL
@@ -150,39 +160,54 @@ cdef int add_single_sink_to_bridge(int v_device_id, Sink_Core * sink) noexcept:
         return -3
     
     printf("v_device_id: %d\n", v_device_id)
+
+    cdef AudioCore * current_core = manager.devices[v_device_id]
+    if current_core == NULL:
+        return -3
     
+    cdef int count = current_core.active_bridge_count
     cdef int i
-    cdef int count = manager.bridges[v_device_id].active_route_count
     
-    for i in range(count):
-        if manager.bridges[v_device_id].target_sinks[i] == sink:
+    for i in range(MAX_ROUTES_PER_DEVICE):
+        if current_core.bridged_sinks[i] == sink:
             return -2
     
     if count < MAX_ROUTES_PER_DEVICE:
-        manager.bridges[v_device_id].target_sinks[count] = sink
-        manager.bridges[v_device_id].active_route_count += 1
-        return 0
-    
+        for i in range(MAX_ROUTES_PER_DEVICE):
+            if current_core.bridged_sinks[i] == NULL:
+                current_core.bridged_sinks[i] = sink
+                current_core.active_bridge_count += 1
+                return 0
+        
     return -1 
 
-cdef int remove_single_sink_from_bridge(int v_device_id, char* device_id) noexcept:
-    if manager == NULL:
+cdef int remove_single_sink_from_bridge(int v_device_id, const char* device_id) noexcept nogil:
+    if manager == NULL or device_id == NULL:
         return -3
-    
+        
+    if v_device_id < 0 or v_device_id >= MAX_DEVICES:
+        return -3
+        
+    cdef AudioCore * current_core = manager.devices[v_device_id]
+    if current_core == NULL:
+        return -3
 
-    if v_device_id < 0 or v_device_id >= MAX_DEVICES or device_id == NULL:
-        return -3
-    
     cdef int i
-    cdef int count = manager.bridges[v_device_id].active_route_count
     
-    for i in range(count):
-        if strcmp(manager.bridges[v_device_id].target_sinks[i].device_id, device_id) == 0:
-            manager.bridges[v_device_id].target_sinks[i] = NULL
-            manager.bridges[v_device_id].active_route_count -= 1
+    for i in range(MAX_ROUTES_PER_DEVICE):
+        if current_core.bridged_sinks[i] == NULL:
+            continue
+            
+        if strcmp(current_core.bridged_sinks[i].device_id, device_id) == 0:
+            current_core.bridged_sinks[i] = NULL
+            
+            if current_core.active_bridge_count > 0:
+                current_core.active_bridge_count -= 1
+                
+            printf(b"Sink '%s' removed from v_device_id: %d, slot: %d\n", device_id, v_device_id, i)
             return 0
-    
-    return -1
+            
+    return -2
 
 cdef void context_state_callback(pa_context * context, void * userdata) noexcept nogil:
     pass
@@ -209,13 +234,45 @@ cdef inline int rms_to_db(double rms) noexcept nogil:
         return -200
     return < int > db
 
-
 cdef inline void route_audio(int src_id, const void * data, size_t length, int db) noexcept nogil:
-    pass
-        
+    cdef AudioCore * current_core = manager.devices[src_id]
+    if current_core == NULL:
+        return
+    
+    if current_core.active_bridge_count == 0:
+        return
 
-cdef inline void read_all_devices() noexcept nogil:
-    pass
+    for i in current_core.bridged_sinks:
+        if i == NULL:
+            continue
+        
+        write(i, data, length, db)
+
+cdef inline void core_tick() noexcept nogil:
+    cdef AudioCore * current_core
+    cdef const void * data
+    cdef size_t peek_limit
+    cdef int i
+
+    for i in range(MAX_DEVICES):
+        current_core = manager.devices[i]
+        if current_core == NULL:
+            continue
+        
+        if current_core.is_active == 0:
+            continue
+        
+        if pa_stream_readable_size(current_core.stream) < BUFFER_LEN:
+            continue
+        
+        peek_limit = <size_t>(BUFFER_LEN / 2) 
+        
+        if pa_stream_peek(current_core.stream, &data, &peek_limit) < 0:
+            continue
+            
+        route_audio(current_core.instance_id, data, peek_limit, 0)
+        pa_stream_drop(current_core.stream)
+
 
 # Main audio read callback:
 # This callback is executed only by the device specified as the main device.
@@ -229,22 +286,8 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
     cdef double rms = 0.0
     cdef int db = 0
 
-    if pa_stream_peek(stream, & data, & data_length) < 0:
-        return
+    core_tick()
 
-    rms = calculate_rms(< int16_t*>data, data_length  // sizeof(int16_t))
-            
-    db = rms_to_db(rms)
-
-    current_core.current_db = db
-
-    route_audio(current_core.instance_id, data, data_length, db)
-
-    pa_stream_drop(stream)
-
-# TODO: optimize.
-cdef inline void core_tick() noexcept nogil:
-    pass
 
 cdef class AudioRecorder:
     cdef AudioCore * core
@@ -261,7 +304,7 @@ cdef class AudioRecorder:
                 f"Instance ID must be between 0 and {MAX_DEVICES - 1}!"
             )
 
-        self.core = <AudioCore *>malloc(sizeof(AudioCore))
+        self.core = <AudioCore *>calloc(1, sizeof(AudioCore))
         if self.core == NULL:
             raise MemoryError("Failed to allocate RAM for the device at C-level.")
 
@@ -475,6 +518,7 @@ class Distributor:
         # Output sink devices
         self.sinks = BridgeManager()
         self.last_instance_id = 0
+        self.setted_main_device = 0
 
     # The device name is used as an identifier when establishing audio bridges.
     # It must be unique; no two devices can share the same name.
@@ -511,21 +555,21 @@ class Distributor:
         return sink
     
     def create_listen_device(self, str device_id, str device_name, int is_main_device=0):
-        try:
-            # convert to bytes
-            listen = AudioRecorder(device_id.encode('utf-8'), self.last_instance_id)
+        # convert to bytes
+        listen = AudioRecorder(device_id.encode('utf-8'), self.last_instance_id, is_main_device)
 
-            self.devices.register(device_name, device_id, listen, is_main_device)
+        if self.setted_main_device != is_main_device:
+            if not self.setted_main_device and is_main_device:
+                self.setted_main_device = True
 
-            self.last_instance_id += 1
+            self.devices.register(device_name, device_id, listen)
+        else:
+            raise ValueError("The main device can only be assigned once, and helper devices cannot be assigned before a main device.")
+
+        self.last_instance_id += 1
             
-            return listen
+        return listen
             
-        except Exception as e:
-            print(f"listen error: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
 
     def get_dB_by_name(self, name, sink=False):
         if sink:

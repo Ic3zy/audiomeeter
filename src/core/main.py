@@ -103,12 +103,12 @@ class AudioCore:
 
 
     def initialize_core_devices(self):
-        name_to_id = {"input_aux": "audiomeeter-aux-input.monitor", "input_main": "audiomeeter-input.monitor"}
+        name_to_id = {"input_main": "audiomeeter-input.monitor", "input_aux": "audiomeeter-aux-input.monitor"}
         
         for (name, id) in name_to_id.items():
             print(f" [AudioCore] initiliaze_core_devices: {name}, {id}")
-            if id == "input_main":
-                a = self.distributor.create_listen_device(id, name, is_main_device=True)
+            if name == "input_main":
+                a = self.distributor.create_listen_device(id, name, is_main_device=1)
             else:
                 a = self.distributor.create_listen_device(id, name)
 
