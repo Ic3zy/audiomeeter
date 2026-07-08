@@ -103,36 +103,13 @@ DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
 DEF BUFFER_LEN = 512
 
-cdef int callback_interval_steps = 100
-
-cdef struct Audio_Buffer:
-    # the sample queue
-    int16_t * samples[2]
-    int update_flag
-    # last_write and last_read keep track of the most recently written and read buffers.
-    # Losing these indices means losing track of exactly when an audio buffer arrived
-
-    # Instead of constantly reordering the list in RAM, this faster method is used.
-    # Zero-copy queue buffer is copied only once when it first arrives from PulseAudio, then never again.
-    # These optimizations are absolutely critical for the realtime hot path
-
-    # Intentionally delaying the buffer by 128 samples
-    # This buys us 2.66 ms of processing time (roughly 9 million CPU ops on a typical processor)
-    # Obviously nothing comes for free it adds an extra 2.66 ms of latency to the audio stream
-    # But I'd much rather have the user deal with a 2.66 ms delay than experience underruns or overruns
-    int last_read
-    int last_write
-
 cdef struct Sink_Core:
     AudioCore * core
+    pa_stream * stream
     char device_id[128]
     int instance_id
     int dB_counter
     int dB
-    # TODO: multi device support
-    Audio_Buffer input_buffer
-    int global_update_flag
-    pa_stream * stream
 
 cdef struct DeviceBridge:
     Sink_Core * target_sinks[MAX_ROUTES_PER_DEVICE]
@@ -148,23 +125,16 @@ cdef struct AudioCore:
     int instance_id
     int is_active
     int current_db
+    int is_main_device # only 0 or 1
 
 cdef struct AudioManager:
     pa_threaded_mainloop * mainloop
     pa_context * context
     AudioCore * devices[MAX_DEVICES]
     DeviceBridge bridges[MAX_DEVICES]
-
     Sink_Core * sinks[MAX_DEVICES]
-    int step_counter
-
-    # debug
-    timespec last_time
-    int is_init
-
 
 cdef AudioManager * manager = NULL
-cdef Audio_Buffer * buffers = NULL
 
 cdef int add_single_sink_to_bridge(int v_device_id, Sink_Core * sink) noexcept:
     if manager == NULL or sink == NULL:
@@ -250,9 +220,6 @@ cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdat
     cdef double rms = 0.0
     cdef int db = 0
 
-    if current_core.is_active == 0:
-        return
-
     if pa_stream_peek(stream, & data, & data_length) < 0:
         return
 
@@ -273,7 +240,7 @@ cdef inline void core_tick() noexcept nogil:
 cdef class AudioRecorder:
     cdef AudioCore * core
 
-    def __cinit__(self, bytes device_id, int instance_id):
+    def __cinit__(self, bytes device_id, int instance_id, int is_main_device=0):
         global manager
         if manager == NULL:
             raise RuntimeError(
@@ -297,6 +264,7 @@ cdef class AudioRecorder:
         self.core.ss.channels = 2
         self.core.instance_id = instance_id
         self.core.is_active = 1
+        self.core.is_main_device = is_main_device
 
         snprintf(
             self.core.device_id,
@@ -391,8 +359,6 @@ cdef class SinkDevice:
     cdef Sink_Core* core
     def __cinit__(self, bytes device_id, int instance_id):
         self.core = <Sink_Core*>calloc(1, sizeof(Sink_Core))
-        self.core.input_buffer.samples[0] = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
-        self.core.input_buffer.samples[1] = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
 
         # ram safety
         if self.core == NULL:
@@ -617,15 +583,9 @@ class Distributor:
 
 def init_audio_system():
     global manager
-    global buffers
 
     cdef int i
     cdef pa_mainloop_api * mainloop_api
-
-    # if buffers == NULL:
-        # use calloc because malloc does not initialize memory
-        # buffers = <Audio_Buffer *>calloc(MAX_DEVICES, sizeof(Audio_Buffer))
-        # buffers.samples = <int16_t *>calloc(BUFFER_LEN, sizeof(int16_t))
 
     if manager == NULL:
         manager = <AudioManager *>calloc(1, sizeof(AudioManager))
@@ -656,14 +616,9 @@ def init_audio_system():
 
 def free_audio_system():
     global manager
-    global buffers
     if manager != NULL:
         free(manager)
         manager = NULL
-    if buffers != NULL:
-        free(buffers)
-        buffers = NULL
-
 
 def run_test():
     import time
