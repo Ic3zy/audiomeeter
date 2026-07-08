@@ -107,7 +107,10 @@ class AudioCore:
         
         for (name, id) in name_to_id.items():
             print(f" [AudioCore] initiliaze_core_devices: {name}, {id}")
-            a = self.distributor.create_listen_device(id, name)
+            if id == "input_main":
+                a = self.distributor.create_listen_device(id, name, is_main_device=True)
+            else:
+                a = self.distributor.create_listen_device(id, name)
 
             self.add_watch_device(a, name, name)
 

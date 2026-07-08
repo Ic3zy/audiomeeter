@@ -2,12 +2,18 @@
 # audio_core.pyx
 # cython: language_level=3
 
-# NOTE:
-# PulseAudio is currently used for rapid prototyping.
-# If the project gains traction or during my free time,
-# both read and write operations will be refactored to interface directly with the ALSA layer.
-# My benchmark (no GUI): CPU: 0.9, RAM: 16-18Mb, per device (no sink). 
-
+# For now, the entire engine is kept in a single .pyx file.
+# I don't want to spend time dealing with build issues while the core
+# architecture is still changing.
+#
+# I removed the old, partially working implementation and decided to
+# rewrite it from scratch.
+#
+# TODO:
+# - Implement a proper core tick so all devices are processed using a single master clock.
+# - Design the audio mixing algorithm.
+# - Implement the gain processing algorithm.
+# - Implement the equalizer (bass, mid, treble) processing algorithm.
 
 import sys
 from libc.stdint cimport uint32_t, uint8_t, int16_t
@@ -211,8 +217,11 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
 cdef inline void read_all_devices() noexcept nogil:
     pass
 
-# main audio read callback
-# stream, 221 call / sec per device
+# Main audio read callback:
+# This callback is executed only by the device specified as the main device.
+# Using a single device as the read source avoids clock drift as well as
+# buffer underrun/overrun synchronization issues.
+# This approach is significantly more stable.
 cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdata) noexcept nogil:
     cdef AudioCore * current_core = <AudioCore * >userdata
     cdef const void * data = NULL
@@ -287,7 +296,10 @@ cdef class AudioRecorder:
 
         with nogil:
             self.core.stream = pa_stream_new(manager.context, b"RecordStream", & self.core.ss, NULL)
-            pa_stream_set_read_callback(self.core.stream, stream_read_callback, < void * >self.core)
+
+            # Do not set the read callback from the auxiliary device.
+            if self.core.is_main_device:
+                pa_stream_set_read_callback(self.core.stream, stream_read_callback, < void * >self.core)
 
             attr = <pa_buffer_attr * >malloc(sizeof(pa_buffer_attr))
             if attr != NULL:
@@ -498,13 +510,13 @@ class Distributor:
         self.last_instance_id += 1
         return sink
     
-    def create_listen_device(self, str device_id, str device_name):
+    def create_listen_device(self, str device_id, str device_name, int is_main_device=0):
         try:
             # convert to bytes
             listen = AudioRecorder(device_id.encode('utf-8'), self.last_instance_id)
-            
-            self.devices.register(device_name, device_id, listen)
-            
+
+            self.devices.register(device_name, device_id, listen, is_main_device)
+
             self.last_instance_id += 1
             
             return listen
