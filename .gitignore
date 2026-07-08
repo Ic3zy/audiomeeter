@@ -5,3 +5,5 @@ audiomeeter_session.json
 build
 *.so
 .vscode
+*.raw
+test/
