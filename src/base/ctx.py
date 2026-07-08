@@ -17,11 +17,27 @@
 # https://github.com/Ic3zy/s4-online/blob/main/Scripts/s4online/base/ctx.py
 # -----------------------------------------------------------------------------
 
+import json, os
 
-# TODO: Add support qt signals
+from pathlib import Path
+
+def get_config_path() -> Path:
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    
+    if xdg_config:
+        config_dir = Path(xdg_config) / "audiomeeter"
+    else:
+        config_dir = Path.home() / ".config" / "audiomeeter"
+    
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
+    return config_dir / "config.json"
+
 class ctx:
     _shared_data = {}
     _callbacks = {}
+
+
 
     def __repr__(self):
         return f"Ctx(data = {len(self._shared_data)}, callbacks = {len(self._callbacks)})"
@@ -31,6 +47,9 @@ class ctx:
         if name == "_shared_data" or name == "_callbacks":
             super().__setattr__(name, value)
         else:
+            if self._shared_data.get(name) == value:
+                return
+            
             self._shared_data[name] = value
             self.callback_call(name)
 
@@ -42,6 +61,9 @@ class ctx:
     # --- Item Assignment (Ctx['key'] = 'val') ---
     def __setitem__(self, key, value):
         print(f"setitem: {key}")
+        if self._shared_data.get(key) == value:
+            return
+        
         self._shared_data[key] = value
         self.callback_call(key)
 
@@ -82,3 +104,44 @@ class ctx:
     def remove_callback(self, key, callback):
         if self._callbacks.get(key) is not None:
             self._callbacks[key].remove(callback)
+
+    #
+    def load_config(self):
+        saved_ctx_path = get_config_path()
+        if saved_ctx_path.exists():
+            self.load_from_file(saved_ctx_path)
+
+    def on_quit(self):
+        self.save_to_file(get_config_path())
+
+    def save_to_file(self, path: Path):
+        with open(path, "w") as f:
+            print(f"save_to_file: {path}, {self.to_json_string()}")
+            f.write(self.to_json_string())
+
+
+    def to_json_string(self) -> str:
+        serializable_dump = {}
+        for k, v in self._shared_data.items():
+            try:
+                json.dumps(v)
+                serializable_dump[k] = v
+            except (TypeError, OverflowError):
+                continue
+        return json.dumps(serializable_dump, indent=4)
+
+    def load_from_dict(self, data_dict: dict, trigger_callbacks: bool = True):
+        for k, v in data_dict.items():
+            self._shared_data[k] = v
+            if trigger_callbacks:
+                self.callback_call(k)
+
+    def load_from_file(self, path: Path):
+        if not path.exists():
+            return {}
+        try:
+            with open(path, "r") as f:
+                data_dict = json.load(f)
+                self.load_from_dict(data_dict, trigger_callbacks=True)
+        except:
+            return {}

@@ -677,13 +677,18 @@ class Right_ToggleButtons(QWidget):
     def create(self):
         for text in self.map:
             btn = self.create_object(text)
+            ctx_name = f"s_{self.slider_number}_{text}"
             
-            def callback(state, t=text):
-                ctx_name = f"s_{self.slider_number}_{t}"
-                
-                Ctx[ctx_name] = state
+            def callback(state, c=ctx_name):
+                Ctx[c] = state
 
-                print(f"s_{self.slider_number}_{t}: {state}")
+            def ctx_callback(b=btn, c=ctx_name):
+                b.blockSignals(True)
+            
+                if hasattr(b, "setChecked"):
+                    b.setChecked(Ctx[c])
+            
+            Ctx.add_callback(ctx_name, ctx_callback)
 
             if hasattr(btn, "stateChanged"):
                 btn.stateChanged.connect(callback)
@@ -701,12 +706,27 @@ class CompGate(QWidget):
         def comp_callback(value):
             ctx_name = f"s_{slider_number}_Comp"
             Ctx[ctx_name] = value
+        
+        def comp_ctx_callback():
+            comp_value = Ctx[f"s_{slider_number}_Comp"]
+            self.comp.setValue(comp_value)
+            self.comp.update()
+
+        Ctx.add_callback(f"s_{slider_number}_Comp", comp_ctx_callback)
         self.comp.add_status_change_callback(comp_callback)
         
         self.gate = Circle_slider()
         def gate_callback(value):
             ctx_name = f"s_{slider_number}_Gate"
             Ctx[ctx_name] = value
+
+        def gate_ctx_callback():
+            gate_value = Ctx[f"s_{slider_number}_Gate"]
+            self.gate.setValue(gate_value)
+            self.gate.update()
+        
+        Ctx.add_callback(f"s_{slider_number}_Gate", gate_ctx_callback)
+
         self.gate.add_status_change_callback(gate_callback)
 
         self.layout.addWidget(self.comp)
@@ -732,6 +752,12 @@ class Slider_buttons_div(QWidget):
             ctx_name = f"s_sl_{slider_number}"
             Ctx[ctx_name] = value
 
+        def mic_ctx_callback():
+            mic_value = Ctx[f"s_sl_{slider_number}"]
+            self.mic_slider.setValue(mic_value)
+            self.mic_slider.update()
+        
+        Ctx.add_callback(f"s_sl_{slider_number}", mic_ctx_callback)
         self.mic_slider.add_status_change_callback(mic_callback)
 
         if not disable_led:
@@ -905,18 +931,39 @@ class Equalizer(QWidget):
         def treble_callback(value):
             ctx_name = f"s_{slider_number}_Treble"
             Ctx[ctx_name] = value
+        
+        def treble_ctx_callback():
+            treble_value = Ctx[f"s_{slider_number}_Treble"]
+            self.treble.setValue(treble_value)
+            self.treble.update()
+        
+        Ctx.add_callback(f"s_{slider_number}_Treble", treble_ctx_callback)
         self.treble.add_status_change_callback(treble_callback)
 
         self.mid.move(30, 45)
         def mid_callback(value):
             ctx_name = f"s_{slider_number}_Mid"
             Ctx[ctx_name] = value
+        
+        def mid_ctx_callback():
+            mid_value = Ctx[f"s_{slider_number}_Mid"]
+            self.mid.setValue(mid_value)
+            self.mid.update()
+        
+        Ctx.add_callback(f"s_{slider_number}_Mid", mid_ctx_callback)
         self.mid.add_status_change_callback(mid_callback)
 
         self.bass.move(0, 80)
         def bass_callback(value):
             ctx_name = f"s_{slider_number}_Bass"
             Ctx[ctx_name] = value
+
+        def bass_ctx_callback():
+            bass_value = Ctx[f"s_{slider_number}_Bass"]
+            self.bass.setValue(bass_value)
+            self.bass.update()
+        
+        Ctx.add_callback(f"s_{slider_number}_Bass", bass_ctx_callback)
         self.bass.add_status_change_callback(bass_callback)
 
         self.treble.valueChanged.connect(self.update)
@@ -1208,6 +1255,13 @@ class H_Slider(QWidget):
         def slider_callback(value):
             ctx_name = f"s_sl_{slider_number}"
             Ctx[ctx_name] = value
+        
+        def slider_ctx_callback():
+            slider_value = Ctx[f"s_sl_{slider_number}"]
+            self.slider.setValue(slider_value)
+            self.slider.update()
+        
+        Ctx.add_callback(f"s_sl_{slider_number}", slider_ctx_callback)
         self.slider.add_status_change_callback(slider_callback)
 
         self.led_vol_meter = HardwareLedVM()
@@ -1236,18 +1290,39 @@ class ChannelControls(QWidget):
         def mono_callback(state):
             ctx_name = f"s_{slider_number}_Mono"
             Ctx[ctx_name] = state
+        
+        def mono_ctx_callback():
+            mono_value = Ctx[f"s_{slider_number}_Mono"]
+            self.mono.setChecked(mono_value)
+            self.mono.update()
+        
+        Ctx.add_callback(f"s_{slider_number}_Mono", mono_ctx_callback)
         self.mono.add_status_change_callback(mono_callback)
 
         self.eq = ToggleButton("EQ")
         def eq_callback(state):
             ctx_name = f"s_{slider_number}_Eq"
             Ctx[ctx_name] = state
+        
+        def eq_ctx_callback():
+            eq_value = Ctx[f"s_{slider_number}_Eq"]
+            self.eq.setChecked(eq_value)
+            self.eq.update()
+        
+        Ctx.add_callback(f"s_{slider_number}_Eq", eq_ctx_callback)
         self.eq.add_status_change_callback(eq_callback)
 
         self.mute = ToggleButton("Mute")
         def mute_callback(state):
             ctx_name = f"s_{slider_number}_Mute"
             Ctx[ctx_name] = state
+        
+        def mute_ctx_callback():
+            mute_value = Ctx[f"s_{slider_number}_Mute"]
+            self.mute.setChecked(mute_value)
+            self.mute.update()
+        
+        Ctx.add_callback(f"s_{slider_number}_Mute", mute_ctx_callback)
         self.mute.add_status_change_callback(mute_callback)
 
         self.layout.addWidget(self.mono)

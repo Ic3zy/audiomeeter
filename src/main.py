@@ -81,10 +81,10 @@ def main():
     
     task = loop.create_task(engine_runner())
     # task2 = loop.create_task(tasks())
-    
-
-
+    Ctx.load_config()
     def on_quit():
+        print("on_quit")
+        Ctx.on_quit()
         if not task.done():
             task.cancel()
             
