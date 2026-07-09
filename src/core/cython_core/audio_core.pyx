@@ -250,10 +250,6 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
         sink.active_buffer_ids[sink.top_updateable] = src_id
         sink.top_updateable += 1
 
-        # write(i, data, length, db)
-
-
-# TODO: optimize
 cdef inline void stream_play() noexcept nogil:
     cdef Sink_Core * sink
     cdef int16_t* mixing_buffer
