@@ -7,3 +7,4 @@ build
 .vscode
 *.raw
 test/
+test2/

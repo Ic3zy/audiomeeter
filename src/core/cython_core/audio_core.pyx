@@ -112,7 +112,7 @@ DEF MAX_NAME_LEN = 32
 DEF BUFFER_LEN = 512
 
 cdef struct Buffer:
-    int16_t samples[BUFFER_LEN]
+    const int16_t* samples
     int updateable
 
 cdef struct Sink_Core:
@@ -122,6 +122,8 @@ cdef struct Sink_Core:
     int instance_id
     int dB_counter
     int dB
+
+    int top_updateable
     Buffer buffers[MAX_DEVICES]
 
 cdef struct DeviceBridge:
@@ -242,11 +244,63 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
     if current_core.active_bridge_count == 0:
         return
 
-    for i in current_core.bridged_sinks:
-        if i == NULL:
+    for sink in current_core.bridged_sinks:
+        if sink == NULL:
             continue
         
-        write(i, data, length, db)
+        sink.buffers[src_id].samples = <int16_t *>data
+        sink.buffers[src_id].updateable = 1
+        sink.top_updateable += 1
+
+        # write(i, data, length, db)
+
+
+# TODO: optimize
+cdef inline void stream_play() noexcept nogil:
+    cdef Sink_Core * sink
+    cdef int16_t* mixing_buffer = NULL
+    cdef int mixing_init
+    cdef int i
+    cdef size_t peek_limit = <size_t>(BUFFER_LEN) 
+
+    for i in range(MAX_DEVICES):
+        sink = manager.sinks[i]
+        if sink == NULL or sink.top_updateable == 0:
+            continue
+        
+        mixing_init = 0
+        
+        if sink.top_updateable == 1:
+            for b in sink.buffers:
+                if b.updateable == 1:
+                    write(sink, b.samples, peek_limit, 0)
+                    b.updateable = 0
+                    sink.top_updateable = 0
+                    break
+
+            continue
+            
+        for b in sink.buffers:
+            if sink.top_updateable == 0:
+                break
+
+            if b.updateable == 1:
+                if mixing_init == 0:
+                    mixing_buffer = b.samples
+                    mixing_init = 1
+                    b.updateable = 0
+                    sink.top_updateable -= 1
+                    continue
+                
+                for bi in range(BUFFER_LEN):
+                    mixing_buffer[bi] += b.samples[bi]
+                
+                b.updateable = 0
+                sink.top_updateable -= 1
+
+        if mixing_init == 1:
+            write(sink, mixing_buffer, peek_limit, 0)
+
 
 cdef inline void core_tick() noexcept nogil:
     cdef AudioCore * current_core
@@ -266,13 +320,14 @@ cdef inline void core_tick() noexcept nogil:
         
         if pa_stream_peek(current_core.stream, &data, &peek_limit) < 0:
             continue
-            
+
         if data == NULL:
             continue
             
         route_audio(current_core.instance_id, data, peek_limit, 0)
         pa_stream_drop(current_core.stream)
 
+    stream_play()
 
 # Main audio read callback:
 # This callback is executed only by the device specified as the main device.
