@@ -680,6 +680,7 @@ class Right_ToggleButtons(QWidget):
             ctx_name = f"s_{self.slider_number}_{text}"
             
             def callback(state, c=ctx_name):
+                print(f"callback: {c}")
                 Ctx[c] = state
 
             def ctx_callback(b=btn, c=ctx_name):
@@ -687,6 +688,8 @@ class Right_ToggleButtons(QWidget):
             
                 if hasattr(b, "setChecked"):
                     b.setChecked(Ctx[c])
+                    
+                b.blockSignals(False)
             
             Ctx.add_callback(ctx_name, ctx_callback)
 
@@ -1611,6 +1614,7 @@ class Hardware_output_text(QWidget):
         self.setFixedSize(220, 70)
 
     def update_device_text(self):
+        print("update_device_text")
         for i in range(3):
             name = f"H_Out_A{i+1}"
             if Ctx.get(name) is None:
@@ -1623,12 +1627,11 @@ class Hardware_output_text(QWidget):
             self.set_device_text(f"A{i+1}", Ctx[name])
 
     def set_device_text(self, output_key, new_text):
-        if output_key == "A1":
-            self.device_a1_text = new_text
-        elif output_key == "A2":
-            self.device_a2_text = new_text
-        elif output_key == "A3":
-            self.device_a3_text = new_text
+        target_key = f"device_{output_key.lower()}_text"
+        if not hasattr(self, target_key):
+            raise KeyError(f"Cannot find attribute '{target_key}'")
+
+        setattr(self, target_key, new_text)
 
         self.update()
 

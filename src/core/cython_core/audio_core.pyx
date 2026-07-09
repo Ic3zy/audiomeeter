@@ -262,12 +262,12 @@ cdef inline void core_tick() noexcept nogil:
         if current_core.is_active == 0:
             continue
         
-        if pa_stream_readable_size(current_core.stream) < BUFFER_LEN:
-            continue
-        
         peek_limit = <size_t>(BUFFER_LEN / 2) 
         
         if pa_stream_peek(current_core.stream, &data, &peek_limit) < 0:
+            continue
+            
+        if data == NULL:
             continue
             
         route_audio(current_core.instance_id, data, peek_limit, 0)

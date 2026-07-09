@@ -110,6 +110,7 @@ class ctx:
         saved_ctx_path = get_config_path()
         if saved_ctx_path.exists():
             self.load_from_file(saved_ctx_path)
+            print(f"config: {self.to_json_string()}")
 
     def on_quit(self):
         self.save_to_file(get_config_path())
@@ -119,6 +120,9 @@ class ctx:
             print(f"save_to_file: {path}, {self.to_json_string()}")
             f.write(self.to_json_string())
 
+    def reset_config(self):
+        with open(get_config_path(), "w") as f:
+            f.write("{}")
 
     def to_json_string(self) -> str:
         serializable_dump = {}
@@ -133,7 +137,9 @@ class ctx:
     def load_from_dict(self, data_dict: dict, trigger_callbacks: bool = True):
         for k, v in data_dict.items():
             self._shared_data[k] = v
-            if trigger_callbacks:
+
+        if trigger_callbacks:
+            for k in data_dict.keys():
                 self.callback_call(k)
 
     def load_from_file(self, path: Path):
@@ -143,5 +149,6 @@ class ctx:
             with open(path, "r") as f:
                 data_dict = json.load(f)
                 self.load_from_dict(data_dict, trigger_callbacks=True)
-        except:
+        except Exception as e:
+            print(f"Config loading error: {e}")
             return {}

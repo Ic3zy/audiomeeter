@@ -92,12 +92,12 @@ class VirtualDevices:
 class AudioCore:
     def __init__(self):
         init_audio_system()
-        self.distributor = Distributor()
-        self.save_sink_device()
-
         self.archived_routes = []
-        # {"device_name": (device, ctx_dB_name)}
         self.watch_devices = {}
+
+        self.distributor = Ctx["distributor"]
+        self.save_sink_device()
+        # {"device_name": (device, ctx_dB_name)}
         self.initialize_core_devices()
 
 
