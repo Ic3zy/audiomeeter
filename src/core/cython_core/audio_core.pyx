@@ -10,9 +10,7 @@
 # rewrite it from scratch.
 #
 # TODO:
-# - Implement a proper core tick so all devices are processed using a single master clock. (Done / Implemented via Zero-Copy)
 # - Decibel calculations are currently non-functional and deactivated. Fix this.
-# - Design the audio mixing algorithm.
 # - Implement the gain processing algorithm.
 # - Implement the equalizer (bass, mid, treble) processing algorithm.
 
@@ -113,7 +111,6 @@ DEF BUFFER_LEN = 512
 
 cdef struct Buffer:
     const int16_t* samples
-    int updateable
 
 cdef struct Sink_Core:
     AudioCore * core
@@ -124,6 +121,7 @@ cdef struct Sink_Core:
     int dB
 
     int top_updateable
+    int active_buffer_ids[MAX_ROUTES_PER_DEVICE]
     Buffer buffers[MAX_DEVICES]
 
 cdef struct DeviceBridge:
@@ -249,7 +247,7 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
             continue
         
         sink.buffers[src_id].samples = <int16_t *>data
-        sink.buffers[src_id].updateable = 1
+        sink.active_buffer_ids[sink.top_updateable] = src_id
         sink.top_updateable += 1
 
         # write(i, data, length, db)
@@ -258,49 +256,27 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
 # TODO: optimize
 cdef inline void stream_play() noexcept nogil:
     cdef Sink_Core * sink
-    cdef int16_t* mixing_buffer = NULL
-    cdef int mixing_init
-    cdef int i
-    cdef size_t peek_limit = <size_t>(BUFFER_LEN) 
+    cdef int16_t* mixing_buffer
+    cdef int i, j, active_id
+    cdef size_t peek_limit = <size_t>(BUFFER_LEN)
 
     for i in range(MAX_DEVICES):
         sink = manager.sinks[i]
         if sink == NULL or sink.top_updateable == 0:
             continue
         
-        mixing_init = 0
-        
-        if sink.top_updateable == 1:
-            for b in sink.buffers:
-                if b.updateable == 1:
-                    write(sink, b.samples, peek_limit, 0)
-                    b.updateable = 0
-                    sink.top_updateable = 0
-                    break
+        active_id = sink.active_buffer_ids[0]
+        mixing_buffer = sink.buffers[active_id].samples
 
-            continue
+        for j in range(1, sink.top_updateable):
+            active_id = sink.active_buffer_ids[j]
             
-        for b in sink.buffers:
-            if sink.top_updateable == 0:
-                break
+            for bi in range(BUFFER_LEN):
+                mixing_buffer[bi] += sink.buffers[active_id].samples[bi]
 
-            if b.updateable == 1:
-                if mixing_init == 0:
-                    mixing_buffer = b.samples
-                    mixing_init = 1
-                    b.updateable = 0
-                    sink.top_updateable -= 1
-                    continue
-                
-                for bi in range(BUFFER_LEN):
-                    mixing_buffer[bi] += b.samples[bi]
-                
-                b.updateable = 0
-                sink.top_updateable -= 1
-
-        if mixing_init == 1:
-            write(sink, mixing_buffer, peek_limit, 0)
-
+        write(sink, mixing_buffer, peek_limit, 0)
+        
+        sink.top_updateable = 0
 
 cdef inline void core_tick() noexcept nogil:
     cdef AudioCore * current_core
