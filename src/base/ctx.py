@@ -151,4 +151,7 @@ class ctx:
                 self.load_from_dict(data_dict, trigger_callbacks=True)
         except Exception as e:
             print(f"Config loading error: {e}")
+            import traceback
+            traceback.print_exc()
+            
             return {}

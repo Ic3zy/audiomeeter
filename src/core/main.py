@@ -147,9 +147,9 @@ class AudioCore:
             pass
     
     def get_archived_by_sink_name(self, target_sink_name):
-        for (sink_name, v_d_name, s_name) in self.archived_routes:
+        for (sink_name, source_id, s_name) in self.archived_routes:
             if sink_name == target_sink_name:
-                return (sink_name, v_d_name, s_name)
+                return (source_id, s_name)
 
         
     def route_audio(self, source_id, s_name):
@@ -158,7 +158,7 @@ class AudioCore:
 
         is_route = Ctx.get(f"s_{source_id}_{s_name}")
         if is_route is None:
-            raise ValueError(f"s_{source_id}_{s_name} is not defined.")
+            raise ValueError(f"s_{source_id} is not defined.")
 
         # virtual device name
         if isinstance(source_id, int):
@@ -172,17 +172,26 @@ class AudioCore:
 
         # No except
         if sink is None:
-            self.append_archived_route(source_id, v_d_name, s_name)
+            self.archived_routes.append((sink_name, source_id, s_name))
             return
 
         print(f" [AudioCore] route_audio: {v_d_name} -> {s_name}")
 
         if is_route:
-            self.distributor.create_bridge(v_d_name, s_name)
+            try:
+                self.distributor.create_bridge(v_d_name, s_name)
+            except ValueError:
+                self.archived_routes.append((sink_name, source_id, s_name))
         else:
-            self.distributor.remove_bridge(v_d_name, s_name)
+            try:
+                self.distributor.remove_bridge(sink_name, source_id, s_name)
+            except ValueError:
+                if sink_name in self.archived_routes:
+                    self.archived_routes.remove(sink_name)
+            
     
     def create_sink(self, device_id, device_name, sink_name):
+        print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
         archived_bridge = self.get_archived_by_sink_name(sink_name)
             
         print(f" [AudioCore] create_sink: {device_id}, {device_name}")
@@ -192,7 +201,7 @@ class AudioCore:
         self.add_watch_device(sink, device_name, ctx_name)
 
         if archived_bridge is not None:
-            self.route_audio(archived_bridge[0], archived_bridge[2])
+            self.route_audio(archived_bridge[0], archived_bridge[1])
 
     def save_sink_device(self):
         devices = ["A1", "A2", "A3"]
@@ -218,8 +227,5 @@ class Engine:
         task = self.core.dB_watchdog()
         asyncio.create_task(task)
 
-    
-    def on_frequency_change(self, key, frequency):
-        Ctx[key] = frequency
-        print(f" [Engine] Frequency: {frequency}, Key: {key}")
+
     

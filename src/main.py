@@ -1,6 +1,7 @@
 import sys
 import asyncio
 import argparse
+import signal
 from PySide6.QtWidgets import QApplication
 from qasync import QEventLoop
 
@@ -40,7 +41,7 @@ def main():
     async def initialize():
         await asyncio.sleep(0.01)
         await engine.run()
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.1)
             
         if args.reset_config:
             Ctx.reset_config()
@@ -60,6 +61,15 @@ def main():
             
     app.aboutToQuit.connect(on_quit)
     
+    def handle_sigint():
+        app.quit()
+
+    try:
+        loop.add_signal_handler(signal.SIGINT, handle_sigint)
+    except NotImplementedError:
+        # Not implemented on Windows OS
+        pass
+
     with loop:
         loop.run_forever()
 
