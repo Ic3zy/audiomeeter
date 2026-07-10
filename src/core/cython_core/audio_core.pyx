@@ -109,13 +109,17 @@ DEF MAX_DEVICES = 32
 DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
 DEF BUFFER_LEN = 2048
+DEF SAMPLES_COUNT = BUFFER_LEN // 4
+
+# sse4.2 requires 16 byte alignment
+DEF ALIGNED_SAMPLES_COUNT = SAMPLES_COUNT + 4
 
 # TODO: implement bass, mid, treble 
 cdef struct Equalizer:
     double gain
 
 cdef struct Buffer:
-    const float* samples
+    float samples[ALIGNED_SAMPLES_COUNT]
 
 cdef struct Sink_Core:
     AudioCore * core
@@ -260,7 +264,7 @@ cdef inline void route_audio(int src_id, float * data, size_t length) noexcept n
         return
 
     if current_core.eq.gain != 1.0:
-        for bi in range(BUFFER_LEN):
+        for bi in range(ALIGNED_SAMPLES_COUNT):
             data[bi] = <float>(data[bi] * current_core.eq.gain)
 
     # calculate dB of only the leading 24 samples
@@ -271,7 +275,7 @@ cdef inline void route_audio(int src_id, float * data, size_t length) noexcept n
         if sink == NULL:
             continue
         
-        sink.buffers[src_id].samples = <float *>data
+        memcpy(<void*>sink.buffers[src_id].samples, <void*>data, BUFFER_LEN)
         sink.active_buffer_ids[sink.top_updateable] = src_id
         sink.top_updateable += 1
 
@@ -301,16 +305,16 @@ cdef inline void stream_play() noexcept nogil:
             active_id = sink.active_buffer_ids[j]
             current_samples = <float*>sink.buffers[active_id].samples
             
-            for bi in range(BUFFER_LEN):
+            for bi in range(ALIGNED_SAMPLES_COUNT):
                 mixing_buffer[bi] += current_samples[bi]
 
-        if eq.gain != 1.0:
-            for bi in range(BUFFER_LEN):
+        if eq.gain != 1.0: 
+            for bi in range(ALIGNED_SAMPLES_COUNT):
                 mixing_buffer[bi] = <float>(mixing_buffer[bi] * eq.gain)
         
-        # db = calculate_db(mixing_buffer, 24)
+        db = calculate_db(mixing_buffer, 24)
         
-        write(sink, mixing_buffer, peek_limit, 0)
+        write(sink, mixing_buffer, peek_limit, db)
         
         sink.top_updateable = 0
 

@@ -110,11 +110,12 @@ class AudioCore:
             if name == "input_main":
                 a = self.distributor.create_listen_device(id, name, is_main_device=1)
                 ids = 4
-                Ctx.add_callback(f"s_{id}_{name}", lambda n=name, i=ids: self.set_db(n, i))
+                print(f"s_sl_{ids}")
+                Ctx.add_callback(f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False))
             else:
                 a = self.distributor.create_listen_device(id, name)
                 ids = 5
-                Ctx.add_callback(f"s_{id}_{name}", lambda n=name, i=ids: self.set_db(n, i))
+                Ctx.add_callback(f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False))
 
             self.add_watch_device(a, name, name)
 
@@ -207,13 +208,16 @@ class AudioCore:
         if archived_bridge is not None:
             self.route_audio(archived_bridge[0], archived_bridge[1])
 
-    def set_db(self, device_name, device_id):
+    def set_db(self, device_name, device_id, is_sink=True):
         db = Ctx.get(f"s_sl_{device_id}" )
         if db is None:
             return
         try:
             print(f" [AudioCore] set_db: {device_name}, {db}")
-            self.distributor.set_db_from_sink_name(device_name, db)
+            if is_sink:
+                self.distributor.set_db_from_sink_name(device_name, db)
+            else:
+                self.distributor.set_db_from_device_name(device_name, db)
         except Exception as e:
             print(f" [AudioCore] set_db error: {e}")
 
