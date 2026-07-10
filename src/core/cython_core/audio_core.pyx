@@ -115,7 +115,7 @@ cdef struct Equalizer:
     double gain
 
 cdef struct Buffer:
-    const int16_t* samples
+    const float* samples
 
 cdef struct Sink_Core:
     AudioCore * core
@@ -217,20 +217,20 @@ cdef int remove_single_sink_from_bridge(int v_device_id, const char* device_id) 
             
     return -2
 
-cdef inline double calculate_rms(int16_t * samples, size_t num_samples) noexcept nogil:
+cdef inline double calculate_rms(float * samples, size_t num_samples) noexcept nogil:
     cdef size_t i
     cdef double sum_squares = 0.0
 
     for i in range(num_samples):
-        sum_squares += ( < double > samples[i] * <double > samples[i])
+        sum_squares += ( < double > samples[i] * < double > samples[i])
 
     return sqrt(sum_squares / num_samples) if num_samples > 0 else 0.0
 
 cdef inline int rms_to_db(double rms) noexcept nogil:
     cdef double db = -200.0
 
-    if rms > 0.1:
-        db = 20.0 * log10(rms / 32768.0)
+    if rms > 0.000001:
+        db = 20.0 * log10(rms)
 
     if db > 12.0:
         return 12
@@ -239,7 +239,7 @@ cdef inline int rms_to_db(double rms) noexcept nogil:
 
     return < int > db
 
-cdef inline int calculate_db(int16_t * samples, size_t num_samples) noexcept nogil:
+cdef inline int calculate_db(float * samples, size_t num_samples) noexcept nogil:
     # calculate RMS 
     cdef double rms = calculate_rms(samples, num_samples)
     # convert to dB
@@ -258,28 +258,26 @@ cdef inline void route_audio(int src_id, const void * data, size_t length) noexc
         return
 
     # calculate dB of only the leading 24 samples
-    db = calculate_db(<int16_t *>data, 24)
+    db = calculate_db(<float *>data, 24)
     current_core.dB = db
 
     for sink in current_core.bridged_sinks:
         if sink == NULL:
             continue
         
-        sink.buffers[src_id].samples = <int16_t *>data
+        sink.buffers[src_id].samples = <float *>data
         sink.active_buffer_ids[sink.top_updateable] = src_id
         sink.top_updateable += 1
 
 # TODO: Refactor this block for better clarity and precision.
-# NOTE: Multipliers are applied here for gain staging. However, 
-# at extreme levels like +12 dB, int16_t overflows/cliffs, 
-# triggering hardware-level clipping from PulseAudio.
-# TODO: Implement a soft limiter or transition to a float32 mixing buffer.
 cdef inline void stream_play() noexcept nogil:
     cdef Sink_Core * sink
     cdef Equalizer eq
-    cdef int16_t* mixing_buffer
+    cdef float* mixing_buffer
+    cdef float* current_samples 
     cdef double rms
     cdef int db, i, j, active_id
+    cdef int bi 
     cdef size_t peek_limit = <size_t>(BUFFER_LEN)
 
     for i in range(MAX_DEVICES):
@@ -291,21 +289,22 @@ cdef inline void stream_play() noexcept nogil:
         eq = sink.eq
             
         active_id = sink.active_buffer_ids[0]
-        mixing_buffer = sink.buffers[active_id].samples
+        mixing_buffer = <float*>sink.buffers[active_id].samples
 
         for j in range(1, sink.top_updateable):
             active_id = sink.active_buffer_ids[j]
+            current_samples = <float*>sink.buffers[active_id].samples
             
             for bi in range(BUFFER_LEN):
-                mixing_buffer[bi] += sink.buffers[active_id].samples[bi]
+                mixing_buffer[bi] += current_samples[bi]
 
         if eq.gain != 1.0:
             for bi in range(BUFFER_LEN):
-                mixing_buffer[bi] = <int16_t>(mixing_buffer[bi] * eq.gain)
+                mixing_buffer[bi] = <float>(mixing_buffer[bi] * eq.gain)
         
-        db = calculate_db(mixing_buffer, 24)
+        # db = calculate_db(mixing_buffer, 24)
         
-        write(sink, mixing_buffer, peek_limit, db)
+        write(sink, mixing_buffer, peek_limit, 0)
         
         sink.top_updateable = 0
 
@@ -373,7 +372,7 @@ cdef class AudioRecorder:
         self.core.mainloop = NULL
         self.core.context = NULL
         self.core.stream = NULL
-        self.core.ss.format = PA_SAMPLE_S16LE
+        self.core.ss.format = PA_SAMPLE_FLOAT32LE;
         self.core.ss.rate = 48000
         self.core.ss.channels = 2
         self.core.instance_id = instance_id
@@ -494,7 +493,7 @@ cdef class SinkDevice:
             return
 
         cdef pa_sample_spec ss
-        ss.format = PA_SAMPLE_S16LE
+        ss.format = PA_SAMPLE_FLOAT32LE;
         ss.rate = 48000
         ss.channels = 2
 
