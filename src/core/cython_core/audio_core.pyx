@@ -108,7 +108,7 @@ cdef int PA_STREAM_READY = 2
 DEF MAX_DEVICES = 32
 DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
-DEF BUFFER_LEN = 512
+DEF BUFFER_LEN = 2048
 
 # TODO: implement bass, mid, treble 
 cdef struct Equalizer:
@@ -157,6 +157,8 @@ cdef struct AudioManager:
     pa_context * context
     AudioCore * devices[MAX_DEVICES]
     Sink_Core * sinks[MAX_DEVICES]
+
+    timespec last_tick
 
 cdef AudioManager * manager = NULL
 
@@ -247,15 +249,19 @@ cdef inline int calculate_db(float * samples, size_t num_samples) noexcept nogil
 
     return db
 
-cdef inline void route_audio(int src_id, const void * data, size_t length) noexcept nogil:
+cdef inline void route_audio(int src_id, float * data, size_t length) noexcept nogil:
     cdef AudioCore * current_core = manager.devices[src_id]
-    cdef int db
+    cdef int db, bi
 
     if current_core == NULL:
         return
     
     if current_core.active_bridge_count == 0:
         return
+
+    if current_core.eq.gain != 1.0:
+        for bi in range(BUFFER_LEN):
+            data[bi] = <float>(data[bi] * current_core.eq.gain)
 
     # calculate dB of only the leading 24 samples
     db = calculate_db(<float *>data, 24)
@@ -322,7 +328,7 @@ cdef inline void core_tick() noexcept nogil:
         if current_core.is_active == 0:
             continue
         
-        peek_limit = <size_t>(BUFFER_LEN / 2) 
+        peek_limit = <size_t>(BUFFER_LEN) 
         
         if pa_stream_peek(current_core.stream, &data, &peek_limit) < 0:
             continue
@@ -330,7 +336,7 @@ cdef inline void core_tick() noexcept nogil:
         if data == NULL:
             continue
             
-        route_audio(current_core.instance_id, data, peek_limit)
+        route_audio(current_core.instance_id, <float *>data, peek_limit)
         pa_stream_drop(current_core.stream)
 
     stream_play()
@@ -341,14 +347,7 @@ cdef inline void core_tick() noexcept nogil:
 # buffer underrun/overrun synchronization issues.
 # This approach is significantly more stable.
 cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdata) noexcept nogil:
-    cdef AudioCore * current_core = <AudioCore * >userdata
-    cdef const void * data = NULL
-    cdef size_t data_length = 0
-    cdef double rms = 0.0
-    cdef int db = 0
-
     core_tick()
-
 
 cdef class AudioRecorder:
     cdef AudioCore * core
@@ -395,10 +394,8 @@ cdef class AudioRecorder:
 
         cdef pa_buffer_attr * attr = NULL
         cdef int result = 0
-        cdef uint32_t target_fragment = 256 * sizeof(int16_t) # 512 Byte
+        cdef uint32_t target_fragment = 512 * sizeof(float) # 512 Byte
                 
-        cdef uint32_t half_block = 256
-
         with nogil:
             self.core.stream = pa_stream_new(manager.context, b"RecordStream", & self.core.ss, NULL)
 
@@ -410,11 +407,11 @@ cdef class AudioRecorder:
             if attr != NULL:
                 memset(attr, 0, sizeof(pa_buffer_attr))
 
-                attr.fragsize = half_block 
-                attr.minreq = half_block
-                attr.tlength = 1024 
-                attr.prebuf = half_block
-                attr.maxlength = 512
+                attr.fragsize = target_fragment
+                attr.minreq = target_fragment
+                attr.tlength = target_fragment
+                attr.prebuf = target_fragment
+                attr.maxlength = target_fragment
 
             result = pa_stream_connect_record(
                 self.core.stream,

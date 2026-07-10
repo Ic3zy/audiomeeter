@@ -109,8 +109,12 @@ class AudioCore:
             print(f" [AudioCore] initiliaze_core_devices: {name}, {id}")
             if name == "input_main":
                 a = self.distributor.create_listen_device(id, name, is_main_device=1)
+                ids = 4
+                Ctx.add_callback(f"s_{id}_{name}", lambda n=name, i=ids: self.set_db(n, i))
             else:
                 a = self.distributor.create_listen_device(id, name)
+                ids = 5
+                Ctx.add_callback(f"s_{id}_{name}", lambda n=name, i=ids: self.set_db(n, i))
 
             self.add_watch_device(a, name, name)
 
@@ -184,7 +188,7 @@ class AudioCore:
                 self.archived_routes.append((sink_name, source_id, s_name))
         else:
             try:
-                self.distributor.remove_bridge(sink_name, source_id, s_name)
+                self.distributor.remove_bridge(v_d_name, s_name)
             except ValueError:
                 if sink_name in self.archived_routes:
                     self.archived_routes.remove(sink_name)
@@ -203,8 +207,8 @@ class AudioCore:
         if archived_bridge is not None:
             self.route_audio(archived_bridge[0], archived_bridge[1])
 
-    def set_db(self, device_name):
-        db = Ctx.get(f"s_sl_{int(device_name[-1]) + 5}" )
+    def set_db(self, device_name, device_id):
+        db = Ctx.get(f"s_sl_{device_id}" )
         if db is None:
             return
         try:
@@ -218,14 +222,15 @@ class AudioCore:
 
         for device in devices:
             c_name = f"H_Out_{device}_id"
-            sl_name = f"s_sl_{int(device[-1]) + 5}" 
+            ids = int(device[-1]) + 5
+            sl_name = f"s_sl_{ids}" 
             Ctx.add_callback(c_name, lambda c_n=c_name, d=device: self.create_sink(Ctx[c_n], d, c_n))
 
             for i in range(5):
                 name = f"s_{i+1}_{device}"
                 Ctx.add_callback(name, lambda n=i+1, d=device: self.route_audio(n, d))
             
-            Ctx.add_callback(sl_name, lambda n=device: self.set_db(n))
+            Ctx.add_callback(sl_name, lambda n=device, i=ids: self.set_db(n, i))
 
 
 class Engine:
