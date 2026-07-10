@@ -141,7 +141,7 @@ cdef struct AudioCore:
     char device_id[256]
     int instance_id
     int is_active
-    int current_db
+    int dB
     int is_main_device # only 0 or 1
     
 cdef struct AudioManager:
@@ -232,15 +232,30 @@ cdef inline int rms_to_db(double rms) noexcept nogil:
         return 12
     if db < -200.0:
         return -200
+
     return < int > db
 
-cdef inline void route_audio(int src_id, const void * data, size_t length, int db) noexcept nogil:
+cdef inline int calculate_db(int16_t * samples, size_t num_samples) noexcept nogil:
+    # calculate RMS 
+    cdef double rms = calculate_rms(samples, num_samples)
+    # convert to dB
+    cdef int db = rms_to_db(rms)
+
+    return db
+
+cdef inline void route_audio(int src_id, const void * data, size_t length) noexcept nogil:
     cdef AudioCore * current_core = manager.devices[src_id]
+    cdef int db
+
     if current_core == NULL:
         return
     
     if current_core.active_bridge_count == 0:
         return
+
+    # calculate dB of only the leading 24 samples
+    db = calculate_db(<int16_t *>data, 24)
+    current_core.dB = db
 
     for sink in current_core.bridged_sinks:
         if sink == NULL:
@@ -253,8 +268,10 @@ cdef inline void route_audio(int src_id, const void * data, size_t length, int d
 cdef inline void stream_play() noexcept nogil:
     cdef Sink_Core * sink
     cdef int16_t* mixing_buffer
-    cdef int i, j, active_id
+    cdef double rms
+    cdef int db, i, j, active_id
     cdef size_t peek_limit = <size_t>(BUFFER_LEN)
+
 
     for i in range(MAX_DEVICES):
         sink = manager.sinks[i]
@@ -270,7 +287,9 @@ cdef inline void stream_play() noexcept nogil:
             for bi in range(BUFFER_LEN):
                 mixing_buffer[bi] += sink.buffers[active_id].samples[bi]
 
-        write(sink, mixing_buffer, peek_limit, 0)
+        db = calculate_db(mixing_buffer, 24)
+        
+        write(sink, mixing_buffer, peek_limit, db)
         
         sink.top_updateable = 0
 
@@ -296,7 +315,7 @@ cdef inline void core_tick() noexcept nogil:
         if data == NULL:
             continue
             
-        route_audio(current_core.instance_id, data, peek_limit, 0)
+        route_audio(current_core.instance_id, data, peek_limit)
         pa_stream_drop(current_core.stream)
 
     stream_play()
@@ -400,10 +419,10 @@ cdef class AudioRecorder:
     # TODO: replace with public cdef double
     @property
     def dB(self):
-        return self.core.current_db
+        return self.core.dB
     
     def get_dB(self):
-        return self.core.current_db
+        return self.core.dB
 
     cpdef get_id(self):
         return self.core.instance_id
