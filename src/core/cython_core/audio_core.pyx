@@ -24,6 +24,7 @@ from libc.string cimport memset, memcpy
 from libc.stdint cimport int64_t
 from libc.stdint cimport uintptr_t
 from libc.string cimport strcmp, strncpy
+from libc.math cimport pow
 
 cdef extern from "<time.h>" nogil:
     ctypedef long time_t
@@ -109,12 +110,17 @@ DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
 DEF BUFFER_LEN = 512
 
+# TODO: implement bass, mid, treble 
+cdef struct Equalizer:
+    double gain
+
 cdef struct Buffer:
     const int16_t* samples
 
 cdef struct Sink_Core:
     AudioCore * core
     pa_stream * stream
+    Equalizer eq
     char device_id[128]
     int instance_id
     int dB_counter
@@ -134,6 +140,8 @@ cdef struct AudioCore:
     pa_context * context
     pa_stream * stream
     pa_sample_spec ss
+
+    Equalizer eq
 
     Sink_Core * bridged_sinks[MAX_ROUTES_PER_DEVICE]
     int active_bridge_count
@@ -209,10 +217,6 @@ cdef int remove_single_sink_from_bridge(int v_device_id, const char* device_id) 
             
     return -2
 
-cdef void context_state_callback(pa_context * context, void * userdata) noexcept nogil:
-    pass
-
-
 cdef inline double calculate_rms(int16_t * samples, size_t num_samples) noexcept nogil:
     cdef size_t i
     cdef double sum_squares = 0.0
@@ -265,19 +269,27 @@ cdef inline void route_audio(int src_id, const void * data, size_t length) noexc
         sink.active_buffer_ids[sink.top_updateable] = src_id
         sink.top_updateable += 1
 
+# TODO: Refactor this block for better clarity and precision.
+# NOTE: Multipliers are applied here for gain staging. However, 
+# at extreme levels like +12 dB, int16_t overflows/cliffs, 
+# triggering hardware-level clipping from PulseAudio.
+# TODO: Implement a soft limiter or transition to a float32 mixing buffer.
 cdef inline void stream_play() noexcept nogil:
     cdef Sink_Core * sink
+    cdef Equalizer eq
     cdef int16_t* mixing_buffer
     cdef double rms
     cdef int db, i, j, active_id
     cdef size_t peek_limit = <size_t>(BUFFER_LEN)
 
-
     for i in range(MAX_DEVICES):
         sink = manager.sinks[i]
+
         if sink == NULL or sink.top_updateable == 0:
             continue
-        
+
+        eq = sink.eq
+            
         active_id = sink.active_buffer_ids[0]
         mixing_buffer = sink.buffers[active_id].samples
 
@@ -287,6 +299,10 @@ cdef inline void stream_play() noexcept nogil:
             for bi in range(BUFFER_LEN):
                 mixing_buffer[bi] += sink.buffers[active_id].samples[bi]
 
+        if eq.gain != 1.0:
+            for bi in range(BUFFER_LEN):
+                mixing_buffer[bi] = <int16_t>(mixing_buffer[bi] * eq.gain)
+        
         db = calculate_db(mixing_buffer, 24)
         
         write(sink, mixing_buffer, peek_limit, db)
@@ -363,6 +379,7 @@ cdef class AudioRecorder:
         self.core.instance_id = instance_id
         self.core.is_active = 1
         self.core.is_main_device = is_main_device
+        self.core.eq.gain = 1.0
 
         snprintf(
             self.core.device_id,
@@ -470,6 +487,7 @@ cdef class SinkDevice:
         self.core.device_id[127] = b'\0'
         self.core.instance_id = instance_id
         self.core.dB = -200
+        self.core.eq.gain = 1.0
         
         if manager == NULL or manager.context == NULL:
             print("error: not initialized manager")
@@ -682,6 +700,39 @@ class Distributor:
         if res < 0:
             raise ValueError(f"Device '{sink_name}' is not routed to this bridge.")
         
+    def db_to_gain(self, double db):
+        if db <= -60.0:
+            return 0.0
+        
+        return pow(10.0, db / 20.0)
+
+    def set_db_from_device_name(self, str device_name, double db):
+        cdef AudioRecorder listen_obj = self.devices.get_by_name(device_name)
+        if listen_obj is None:
+            raise ValueError(f"Listen not found: {device_name}")
+        
+        cdef AudioCore * current_core = listen_obj.core
+
+        if current_core == NULL:
+            return
+        
+        cdef double gain = self.db_to_gain(db)
+
+        current_core.eq.gain = gain
+
+    def set_db_from_sink_name(self, str sink_name, double db):
+        cdef SinkDevice sink_obj = self.sinks.get_by_name(sink_name)
+        if sink_obj is None:
+            raise ValueError(f"Sink not found: {sink_name}")
+        
+        cdef Sink_Core * sink_core = sink_obj.core
+        if sink_core == NULL:
+            return
+        
+        cdef double gain = self.db_to_gain(db)
+
+        sink_core.eq.gain = gain
+
 
 def init_audio_system():
     global manager

@@ -203,16 +203,30 @@ class AudioCore:
         if archived_bridge is not None:
             self.route_audio(archived_bridge[0], archived_bridge[1])
 
+    def set_db(self, device_name):
+        db = Ctx.get(f"s_sl_{int(device_name[-1]) + 5}" )
+        if db is None:
+            return
+        try:
+            print(f" [AudioCore] set_db: {device_name}, {db}")
+            self.distributor.set_db_from_sink_name(device_name, db)
+        except Exception as e:
+            print(f" [AudioCore] set_db error: {e}")
+
     def save_sink_device(self):
         devices = ["A1", "A2", "A3"]
 
         for device in devices:
             c_name = f"H_Out_{device}_id"
+            sl_name = f"s_sl_{int(device[-1]) + 5}" 
             Ctx.add_callback(c_name, lambda c_n=c_name, d=device: self.create_sink(Ctx[c_n], d, c_n))
 
             for i in range(5):
                 name = f"s_{i+1}_{device}"
                 Ctx.add_callback(name, lambda n=i+1, d=device: self.route_audio(n, d))
+            
+            Ctx.add_callback(sl_name, lambda n=device: self.set_db(n))
+
 
 class Engine:
     core = None
