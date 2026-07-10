@@ -7,7 +7,17 @@ class PulseOutputDevice:
         self.index = sink_info.index
         self.name = sink_info.name
         self.description = sink_info.description
-        self.physical = sink_info.flags != 166  # int bitmask
+        
+        self.is_our_virtual = "audiomeeter.device_type" in sink_info.proplist
+        
+        self.is_standard_virtual = sink_info.driver in [
+            "module-null-sink.c", 
+            "module-virtual-sink.c", 
+            "module-remap-sink.c",
+            "module-combine-sink.c"
+        ]
+        
+        self.physical = not self.is_our_virtual and not self.is_standard_virtual
 
     @property
     def is_physical(self) -> bool:
@@ -15,7 +25,7 @@ class PulseOutputDevice:
 
     @property
     def is_virtual(self) -> bool:
-        return not self.is_physical
+        return self.is_our_virtual or self.is_standard_virtual
 
     def __repr__(self):
         return f"<PulseOutputDevice [Index: {self.index}] Desc: {self.description} (Name: {self.name}, Physical: {self.is_physical})>"
@@ -39,4 +49,3 @@ class PulseAudioManager:
 
 
 DevicesManager = PulseAudioManager("AudiomeeterCore")
-
