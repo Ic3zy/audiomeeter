@@ -101,6 +101,11 @@ class AudioCore:
         self.initialize_core_devices()
 
 
+    def save_eq_callback(self, name, sl_number):
+        for eq_type in ["Bass", "Mid", "Treble"]:
+            ctx_name = f"s_{sl_number}_{eq_type}"
+            Ctx.add_callback(ctx_name, lambda n=name, cn=ctx_name, e=eq_type.lower(): self.distributor.set_eq_from_device_name(n, e, Ctx[cn]/10))
+
 
     def initialize_core_devices(self):
         name_to_id = {"input_main": "audiomeeter-input.monitor", "input_aux": "audiomeeter-aux-input.monitor"}
@@ -111,10 +116,13 @@ class AudioCore:
                 a = self.distributor.create_listen_device(id, name, is_main_device=1)
                 ids = 4
                 print(f"s_sl_{ids}")
+                self.save_eq_callback(name, ids)
                 Ctx.add_callback(f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False))
+
             else:
                 a = self.distributor.create_listen_device(id, name)
                 ids = 5
+                self.save_eq_callback(name, ids)
                 Ctx.add_callback(f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False))
 
             self.add_watch_device(a, name, name)

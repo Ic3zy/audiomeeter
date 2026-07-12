@@ -1,8 +1,13 @@
 def make_ext(modname, pyxfilename):
     from distutils.extension import Extension
+    import os
+    curr_dir = os.path.dirname(__file__)
+    base_include = os.path.abspath(curr_dir)
+    biquad_include = os.path.abspath(os.path.join(curr_dir, "rt_biquad", "include"))
     return Extension(
         name=modname,
         sources=[pyxfilename],
+        include_dirs=[base_include, biquad_include],
         libraries=["pulse"],
         extra_compile_args=["-msse4.2", "-O3", "-march=native"]
     )

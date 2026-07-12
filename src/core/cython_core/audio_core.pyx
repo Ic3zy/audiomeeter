@@ -102,6 +102,22 @@ cdef extern from "pulse/def.h":
     cdef enum pa_seek_mode:
         PA_SEEK_RELATIVE
 
+cdef extern from "rt_biquad/include/rt_biquad.h" nogil:
+    struct rt_biquad_state:
+        pass
+
+    struct rt_band:
+        pass
+
+    rt_band* create_band(float start_hz, float end_hz, float db_gain, float sample_rate)
+    
+    void update_band(rt_band *band, float start_hz, float end_hz, float db_gain, float sample_rate)
+
+    void destroy_band(rt_band *band)
+    
+    void filter_from_hz_list(rt_band *bands, float *samples, int length, float sample_rate, int band_count)
+
+
 cdef int PA_CONTEXT_READY = 4
 cdef int PA_STREAM_READY = 2
 
@@ -111,15 +127,16 @@ DEF MAX_NAME_LEN = 32
 DEF BUFFER_LEN = 2048
 DEF SAMPLES_COUNT = BUFFER_LEN // 4
 
-# sse4.2 requires 16 byte alignment
-DEF ALIGNED_SAMPLES_COUNT = SAMPLES_COUNT + 4
-
 # TODO: implement bass, mid, treble 
 cdef struct Equalizer:
+    rt_band *bass_band
+    rt_band *mid_band
+    rt_band *treble_band
+
     double gain
 
 cdef struct Buffer:
-    float samples[ALIGNED_SAMPLES_COUNT]
+    float samples[SAMPLES_COUNT]
 
 cdef struct Sink_Core:
     AudioCore * core
@@ -256,6 +273,7 @@ cdef inline int calculate_db(float * samples, size_t num_samples) noexcept nogil
 cdef inline void route_audio(int src_id, float * data, size_t length) noexcept nogil:
     cdef AudioCore * current_core = manager.devices[src_id]
     cdef int db, bi
+    cdef rt_band band[3]
 
     if current_core == NULL:
         return
@@ -264,10 +282,13 @@ cdef inline void route_audio(int src_id, float * data, size_t length) noexcept n
         return
 
     if current_core.eq.gain != 1.0:
-        for bi in range(ALIGNED_SAMPLES_COUNT):
+        for bi in range(SAMPLES_COUNT):
             data[bi] = <float>(data[bi] * current_core.eq.gain)
 
+
     # calculate dB of only the leading 24 samples
+
+
     db = calculate_db(<float *>data, 24)
     current_core.dB = db
 
@@ -276,8 +297,18 @@ cdef inline void route_audio(int src_id, float * data, size_t length) noexcept n
             continue
         
         memcpy(<void*>sink.buffers[src_id].samples, <void*>data, BUFFER_LEN)
+
+        band[0] = current_core.eq.bass_band[0]
+        band[1] = current_core.eq.mid_band[0]
+        band[2] = current_core.eq.treble_band[0]
+        
+        filter_from_hz_list(<rt_band *>band, <float *>sink.buffers[src_id].samples, SAMPLES_COUNT, 48000, 3)
+        
         sink.active_buffer_ids[sink.top_updateable] = src_id
         sink.top_updateable += 1
+
+cdef inline void apply_filter(float *samples) noexcept nogil:
+    pass
 
 # TODO: Refactor this block for better clarity and precision.
 cdef inline void stream_play() noexcept nogil:
@@ -305,11 +336,11 @@ cdef inline void stream_play() noexcept nogil:
             active_id = sink.active_buffer_ids[j]
             current_samples = <float*>sink.buffers[active_id].samples
             
-            for bi in range(ALIGNED_SAMPLES_COUNT):
+            for bi in range(SAMPLES_COUNT):
                 mixing_buffer[bi] += current_samples[bi]
 
         if eq.gain != 1.0: 
-            for bi in range(ALIGNED_SAMPLES_COUNT):
+            for bi in range(SAMPLES_COUNT):
                 mixing_buffer[bi] = <float>(mixing_buffer[bi] * eq.gain)
         
         db = calculate_db(mixing_buffer, 24)
@@ -353,6 +384,13 @@ cdef inline void core_tick() noexcept nogil:
 cdef void stream_read_callback(pa_stream * stream, size_t length, void * userdata) noexcept nogil:
     core_tick()
 
+
+cdef void initialize_bands(Equalizer *eq) noexcept nogil:
+    eq.bass_band = create_band(20.0, 100.0, 0.0, 48000)
+    eq.mid_band = create_band(100.0, 4000.0, 0.0, 48000)
+    eq.treble_band = create_band(4000.0, 20000.0, 0.0, 48000)
+
+
 cdef class AudioRecorder:
     cdef AudioCore * core
 
@@ -371,6 +409,8 @@ cdef class AudioRecorder:
         self.core = <AudioCore *>calloc(1, sizeof(AudioCore))
         if self.core == NULL:
             raise MemoryError("Failed to allocate RAM for the device at C-level.")
+
+        initialize_bands(&self.core.eq)
 
         self.core.mainloop = NULL
         self.core.context = NULL
@@ -481,7 +521,7 @@ cdef class SinkDevice:
         # ram safety
         if self.core == NULL:
             raise MemoryError("error: failed to allocate RAM")
-        
+
         cdef char * c_device_id = device_id
         strncpy(self.core.device_id, c_device_id, 127)
         self.core.device_id[127] = b'\0'
@@ -733,6 +773,24 @@ class Distributor:
 
         sink_core.eq.gain = gain
 
+    def set_eq_from_device_name(self, str device_name, str type, float value):
+        print(f"set_eq_from_device_name: {device_name}, {type}, {value}")
+        cdef AudioRecorder listen_obj = self.devices.get_by_name(device_name)
+        if listen_obj is None:
+            raise ValueError(f"Listen not found: {device_name}")
+        
+        cdef AudioCore * current_core = listen_obj.core
+        if current_core == NULL:
+            return
+        
+        if type == "bass":
+            update_band(current_core.eq.bass_band, 20.0, 100.0, value, 48000)
+        elif type == "mid":
+            update_band(current_core.eq.mid_band, 100.0, 4000.0, value, 48000)
+        elif type == "treble":
+            update_band(current_core.eq.treble_band, 4000.0, 20000.0, value, 48000)
+        else:
+            raise ValueError(f"Invalid equalizer type: {type}")
 
 def init_audio_system():
     global manager
