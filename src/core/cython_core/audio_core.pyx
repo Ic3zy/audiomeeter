@@ -303,7 +303,7 @@ cdef inline void route_audio(int src_id, float * data, size_t length) noexcept n
         band[2] = current_core.eq.treble_band[0]
         
         filter_from_hz_list(<rt_band *>band, <float *>sink.buffers[src_id].samples, SAMPLES_COUNT, 48000, 3)
-        
+
         sink.active_buffer_ids[sink.top_updateable] = src_id
         sink.top_updateable += 1
 
@@ -434,7 +434,7 @@ cdef class AudioRecorder:
 
     def start(self):
         manager.devices[self.core.instance_id] = self.core
-        cdef int stream_flags = 0x0200 | 0x2000  # 0x0200 = DONT_MOVE, 0x2000 = ADJUST_LATENCY
+        cdef int stream_flags = 0x0200  #| 0x2000  # 0x0200 = DONT_MOVE, 0x2000 = ADJUST_LATENCY
 
         cdef pa_buffer_attr * attr = NULL
         cdef int result = 0
@@ -543,7 +543,7 @@ cdef class SinkDevice:
             print("error: not created stream")
             return
 
-        cdef int stream_flags = 0x0200 | 0x2000 
+        cdef int stream_flags = 0x0200 #| 0x2000 
         cdef int result = pa_stream_connect_playback(
             self.core.stream, 
             self.core.device_id,
