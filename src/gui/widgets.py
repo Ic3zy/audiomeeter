@@ -867,7 +867,6 @@ class VirtualInputLedVM(QWidget):
         return (db + 100) / 112
 
     def setValue(self, val):
-        print(f"setValue: {val}")
         end = self.db_to_percent(val)
 
         if self._anim_task and not self._anim_task.done():
@@ -1193,7 +1192,6 @@ class HardwareLedVM(QWidget):
         return (db + 100) / 112
 
     def setValue(self, val):
-        print(f"setValue: {val}")
         end = self.db_to_percent(val)
 
         if self._anim_task and not self._anim_task.done():

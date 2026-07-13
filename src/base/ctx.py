@@ -43,7 +43,7 @@ class ctx:
         return f"Ctx(data = {len(self._shared_data)}, callbacks = {len(self._callbacks)})"
 
     def __setattr__(self, name, value):
-        print(f"setattr: {name}")
+        # print(f"setattr: {name}")
         if name == "_shared_data" or name == "_callbacks":
             super().__setattr__(name, value)
         else:
@@ -60,7 +60,7 @@ class ctx:
 
     # --- Item Assignment (Ctx['key'] = 'val') ---
     def __setitem__(self, key, value):
-        print(f"setitem: {key}")
+        # print(f"setitem: {key}")
         if self._shared_data.get(key) == value:
             return
         
