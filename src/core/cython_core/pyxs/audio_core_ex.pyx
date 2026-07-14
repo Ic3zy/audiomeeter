@@ -1,4 +1,5 @@
-# distutils: libraries = pulse
+w# distutils: libraries = pipewire-0.3
+# distutils: include_dirs = /usr/include/pipewire-0.3 /usr/include/spa-0.2
 # audio_core.pyx
 # cython: language_level=3
 
@@ -16,6 +17,8 @@
 
 import sys
 from libc.stdint cimport uint32_t, uint8_t, int16_t
+from libc.stdint cimport int32_t
+from libc.stdint cimport uint8_t
 from libc.stddef cimport size_t
 from libc.stdlib cimport malloc, free, calloc
 from libc.stdio cimport printf, fflush, stdout
@@ -54,11 +57,146 @@ cdef extern from "rt_biquad/include/rt_biquad.h" nogil:
     void filter_from_hz_list(rt_band *bands, float *samples, int length, float sample_rate, int band_count)
 
 
+cdef extern from "<spa/pod/builder.h>" nogil:
+
+    struct spa_pod:
+        pass
+
+    struct spa_pod_builder:
+        pass
+
+    struct spa_pod_frame:
+        pass
+
+    void spa_pod_builder_init(
+        spa_pod_builder *builder,
+        void *data,
+        uint32_t size
+    )
+
+cdef extern from "<spa/param/audio/raw.h>" nogil:
+
+    enum spa_audio_channel:
+        SPA_AUDIO_CHANNEL_FL = 3
+        SPA_AUDIO_CHANNEL_FR = 4
+
+    struct spa_audio_info_raw:
+        uint32_t format
+        uint32_t flags
+        uint32_t rate
+        uint32_t channels
+        uint32_t position[64]
+
+cdef extern from "<spa/param/audio/format-utils.h>" nogil:
+
+    spa_pod *spa_format_audio_raw_build(
+        spa_pod_builder *builder,
+        uint32_t id,
+        spa_audio_info_raw *info
+    )
+
+cdef extern from "<pipewire-0.3/pipewire/pipewire.h>" nogil:
+    void pw_init(int *argc, char ***argv)
+    void pw_deinit()
+    
+    struct pw_thread_loop:
+        pass
+        
+    struct pw_loop:
+        pass
+        
+    struct pw_stream:
+        pass
+
+    enum pw_direction:
+        PW_DIRECTION_INPUT
+        PW_DIRECTION_OUTPUT
+
+    enum pw_stream_flags:
+        PW_STREAM_FLAGS_NONE = 0
+        PW_STREAM_FLAGS_MAP_BUFFERS = (1 << 1)
+        
+    struct pw_buffer:
+        spa_buffer *buffer
+
+    struct pw_stream_events:
+        uint32_t version
+        void (*process)(void *data) noexcept nogil
+
+    pw_thread_loop* pw_thread_loop_new(const char *name, const void *props)
+    int pw_thread_loop_start(pw_thread_loop *loop)
+    void pw_thread_loop_stop(pw_thread_loop *loop)
+    void pw_thread_loop_destroy(pw_thread_loop *loop)
+    void pw_thread_loop_lock(pw_thread_loop *loop) noexcept nogil
+    void pw_thread_loop_unlock(pw_thread_loop *loop) noexcept nogil
+    pw_loop* pw_thread_loop_get_loop(pw_thread_loop *loop)
+    
+    pw_stream *pw_stream_new_simple(
+        pw_loop *loop,
+        const char *name,
+        void *props,
+        const pw_stream_events *events,
+        void *data
+    ) noexcept nogil
+    
+    int pw_stream_connect(
+        pw_stream *stream,
+        pw_direction direction,
+        uint32_t target_id,
+        pw_stream_flags flags,
+        const void **params,
+        uint32_t n_params
+    )
+    
+    pw_buffer *pw_stream_dequeue_buffer(pw_stream *stream)
+    int pw_stream_enqueue_buffer(pw_stream *stream, pw_buffer *buffer)
+
+cdef extern from "<spa-0.2/spa/buffer/buffer.h>" nogil:
+    struct spa_chunk:
+        uint32_t offset
+        uint32_t size
+        int32_t stride
+        int32_t flags
+
+    struct spa_data:
+        uint32_t type
+        uint32_t flags
+        int fd
+        int32_t mapoffset
+        uint32_t maxsize
+        void *data
+        spa_chunk *chunk
+
+    struct spa_buffer:
+        spa_data *datas
+        uint32_t n_datas
+
+cdef extern from "<spa/param/audio/format-utils.h>" nogil:
+    enum spa_audio_format:
+        SPA_AUDIO_FORMAT_F32 = 4
+
+    struct spa_audio_info_raw:
+        uint32_t format
+        uint32_t rate
+        uint32_t channels
+    
+cdef extern from "pipewire/stream.h":
+    cpdef enum pw_stream_flags:
+        PW_STREAM_FLAG_NONE = 0
+        PW_STREAM_FLAG_AUTOCONNECT = (1 << 0)
+        PW_STREAM_FLAG_MAP_BUFFERS = (1 << 1)
+    struct pw_properties:
+        pass
+    void pw_init(int *argc, char ***argv)
+    pw_properties *pw_properties_new(const char *key, const char *value, ...)
+
 DEF MAX_DEVICES = 32
 DEF MAX_ROUTES_PER_DEVICE = 8
 DEF MAX_NAME_LEN = 32
 DEF BUFFER_LEN = 2048
 DEF SAMPLES_COUNT = BUFFER_LEN // 4
+DEF PW_VERSION_STREAM_EVENTS = 2 
+
 
 # TODO: implement bass, mid, treble 
 cdef struct Equalizer:
@@ -88,6 +226,7 @@ cdef struct DeviceBridge:
     int active_route_count
 
 cdef struct AudioCore:
+    pw_stream *stream
     Equalizer eq
 
     Sink_Core * bridged_sinks[MAX_ROUTES_PER_DEVICE]
@@ -100,6 +239,7 @@ cdef struct AudioCore:
     int is_main_device # only 0 or 1
     
 cdef struct AudioManager:
+    pw_thread_loop * mainloop
     AudioCore * devices[MAX_DEVICES]
     Sink_Core * sinks[MAX_DEVICES]
 
@@ -107,6 +247,14 @@ cdef struct AudioManager:
 
 cdef AudioManager * manager = NULL
 
+cdef void test(void *data) noexcept nogil:
+    printf("test\n")
+
+cdef void on_capture_process(void *ctx) noexcept nogil:
+    printf("on_capture_process\n")
+
+    
+cdef pw_stream_events capture_events
 cdef int add_single_sink_to_bridge(int v_device_id, Sink_Core * sink) noexcept:
     if manager == NULL or sink == NULL:
         return -3
@@ -254,12 +402,15 @@ cdef inline void stream_play() noexcept nogil:
     cdef int db, i, j, active_id
     cdef int bi 
     cdef size_t peek_limit = <size_t>(BUFFER_LEN)
+    cdef size_t writeable_size
 
     for i in range(MAX_DEVICES):
         sink = manager.sinks[i]
 
         if sink == NULL or sink.top_updateable == 0:
             if sink != NULL and sink.top_updateable == 0:
+                # TODO
+                writeable_size = 0
                 write(sink, <float *>sink.buffers[sink.active_buffer_ids[0]].samples, writeable_size, sink.dB)
                     
             continue
@@ -332,6 +483,39 @@ cdef class AudioRecorder:
             )
 
         self.core = <AudioCore *>calloc(1, sizeof(AudioCore))
+
+        try:
+            props = pw_properties_new(
+                "node.target", <const char*>device_id,
+                "stream.is-live", "true",
+                NULL
+            )
+            pw_thread_loop_lock(manager.mainloop)
+            self.core.stream = pw_stream_new_simple(
+                pw_thread_loop_get_loop(manager.mainloop),
+                "Audiomeeter-Capture",
+                props,
+                &capture_events,
+                <void*>self.core
+            )
+
+            pw_stream_connect(
+                self.core.stream,
+                PW_DIRECTION_INPUT,
+                0xffffffff,
+                <pw_stream_flags>PW_STREAM_FLAG_AUTOCONNECT,
+                NULL, 
+                0
+            )
+        except Exception as e:
+            print(f"pw_stream_new_simple error: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+        finally:
+            pw_thread_loop_unlock(manager.mainloop)
+
         if self.core == NULL:
             raise MemoryError("Failed to allocate RAM for the device at C-level.")
 
@@ -622,12 +806,24 @@ def init_audio_system():
     cdef int i
 
     if manager == NULL:
+        pw_init(NULL, NULL)
+        memset(&capture_events, 0, sizeof(pw_stream_events))
+        capture_events.version = PW_VERSION_STREAM_EVENTS
+        capture_events.process = <void (*)(void *) noexcept nogil>on_capture_process
         manager = <AudioManager *>calloc(1, sizeof(AudioManager))
         if manager == NULL:
             raise MemoryError("Out of memory!")
+        
+        manager.mainloop = pw_thread_loop_new("Audiomeeter-Core", NULL)
+        if manager.mainloop == NULL:
+            raise RuntimeError("Failed to create PipeWire threaded loop")
+
+        if pw_thread_loop_start(manager.mainloop) < 0:
+            raise RuntimeError("Failed to start PipeWire threaded loop")
 
         for i in range(MAX_DEVICES):
             manager.devices[i] = NULL
+            manager.sinks[i] = NULL
 
 def free_audio_system():
     global manager

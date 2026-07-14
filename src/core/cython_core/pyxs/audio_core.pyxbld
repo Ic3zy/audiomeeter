@@ -1,0 +1,33 @@
+def make_ext(modname, pyxfilename):
+    from distutils.extension import Extension
+    import os
+    import subprocess
+
+    curr_dir = os.path.dirname(__file__)
+    base_include = os.path.abspath(curr_dir)
+    biquad_include = os.path.abspath(os.path.join(curr_dir, "rt_biquad", "include"))
+    
+    system_includes = [
+        "/usr/include/pipewire-0.3",
+        "/usr/include/spa-0.2"
+    ]
+    
+    try:
+        pw_cflags = subprocess.check_output(["pkg-config", "--cflags-only-I", "libpipewire-0.3"]).decode("utf-8")
+        spa_cflags = subprocess.check_output(["pkg-config", "--cflags-only-I", "libspa-0.2"]).decode("utf-8")
+        
+        for flag in (pw_cflags + " " + spa_cflags).split():
+            if flag.startswith("-I"):
+                system_includes.append(flag[2:])
+    except Exception:
+        pass
+
+    all_includes = [base_include, biquad_include] + list(set(system_includes))
+
+    return Extension(
+        name=modname,
+        sources=[pyxfilename],
+        include_dirs=all_includes,
+        libraries=["pipewire-0.3"],
+        extra_compile_args=["-msse4.2", "-O3", "-march=native"]
+    )
