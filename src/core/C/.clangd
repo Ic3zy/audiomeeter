@@ -1,0 +1,6 @@
+CompileFlags:
+  Add:
+    - -I/home/abdullah/Belgeler/code_work/audiomeeter/src/core/C/include
+    - -I/usr/include/pipewire-0.3
+    - -I/usr/include/spa-0.2
+    - -D_REENTRANT

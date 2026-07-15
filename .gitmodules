@@ -1,3 +1,3 @@
 [submodule "src/core/cython_core/rt_biquad"]
-	path = src/core/cython_core/rt_biquad
+	path = src/core/C/rt_biquad
 	url = https://github.com/Ic3zy/rt-biquad-filter

@@ -4,14 +4,16 @@ import signal
 from PySide6.QtWidgets import QApplication
 from qasync import QEventLoop
 
-from gui import Window
-from core import Engine
+# from gui import Window
+# from core import Engine
 
 from base import Ctx
 
-from core.cython_core.audio_core import (
-    Distributor
-)
+# from core.cython_core.audio_core import (
+#     Distributor
+# )
+
+from core.cython_core.pyxs.audio_core import *
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -72,5 +74,5 @@ def main():
     with loop:
         loop.run_forever()
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

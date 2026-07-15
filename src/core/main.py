@@ -5,12 +5,12 @@ from pulsectl import _pulsectl as c
 from base import Ctx
 import asyncio
 
-from .cython_core.audio_core import (
-    init_audio_system,
-    free_audio_system,
-    AudioRecorder,
-    Distributor
-)
+# from .cython_core.audio_core import (
+#     init_audio_system,
+#     free_audio_system,
+#     AudioRecorder,
+#     Distributor
+# )
 
 
 DEBUG = False
@@ -91,7 +91,7 @@ class VirtualDevices:
 
 class AudioCore:
     def __init__(self):
-        init_audio_system()
+        # init_audio_system()
         self.archived_routes = []
         self.watch_devices = {}
 
