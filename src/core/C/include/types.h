@@ -6,7 +6,15 @@
 // PipeWire core
 struct PwCore {
   // TODO: implement
-  int a;
+  struct pw_stream *stream;
+
+  int sample_rate;
+  int channels;
+};
+
+struct Equalizer {
+  // TODO: implement
+  int k;
 };
 
 struct SinkCore {
@@ -14,6 +22,7 @@ struct SinkCore {
 
   char device_id[MAX_DEVICE_ID];
   int dB;
+  int is_main;
 };
 
 struct DeviceCore {
@@ -26,16 +35,15 @@ struct DeviceCore {
 };
 
 struct PwManager {
-  struct pw_thread_loop *threaded_loop;
   struct pw_loop *loop;
+  struct pw_thread_loop *threaded_loop;
   int pw_inited;
 };
 
 struct Manager {
-  struct DeviceCore *devices[MAX_DEVICES];
   struct SinkCore *sinks[MAX_DEVICES];
+  struct DeviceCore *devices[MAX_DEVICES];
 
-  int devices_count, sinks_count;
-
+  int devices_count, sinks_count, instance_id;
   struct PwManager pw_manager;
 };
