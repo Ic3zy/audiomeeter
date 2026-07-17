@@ -4,7 +4,7 @@
 /* --- SINK --- */
 
 // allocs a new sink core, aborst if no memory left
-struct SinkCore *sink_create(void);
+struct SinkCore *sink_create(char device_id[128]);
 
 // returns -1 on error or if sink pointer is null
 int sink_get_dB(struct SinkCore *sink);
@@ -14,7 +14,7 @@ int sink_set_dB(struct SinkCore *sink, int dB);
 /* --- DEVICES --- */
 
 // creates device core, will abort if calloc fails
-struct DeviceCore *device_create(void);
+struct DeviceCore *device_create(char device_id[128]);
 
 void device_init(struct DeviceCore *device);
 

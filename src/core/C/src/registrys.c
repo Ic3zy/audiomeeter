@@ -21,13 +21,14 @@ int SinkRegistry_check_if_exists(char device_id[128]) {
   return 0;
 }
 
-void SinkRegistry_create(char device_id[128]) {
-  struct SinkCore *sink = sink_create();
+void SinkRegistry_create(struct SinkCore *sink) {
+  if (sink == NULL)
+    abort();
 
   if (global_manager.sinks_count >= MAX_DEVICES)
     return;
 
-  if (SinkRegistry_check_if_exists(device_id) == 1)
+  if (SinkRegistry_check_if_exists(sink->device_id) == 1)
     return;
 
   global_manager.sinks[global_manager.sinks_count] = sink;
@@ -52,8 +53,7 @@ int DeviceRegistry_check_if_exists(char device_id[128]) {
 }
 
 void DeviceRegistry(char device_id[128]) {
-  struct DeviceCore *device = device_create();
-  device_init(device);
+  struct DeviceCore *device = device_create(device_id);
 
   if (global_manager.devices_count >= MAX_DEVICES)
     return;

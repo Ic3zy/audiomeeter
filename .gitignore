@@ -4,6 +4,7 @@ __pycache__/
 audiomeeter_session.json
 build
 *.so
+*.o
 .vscode
 *.raw
 test/

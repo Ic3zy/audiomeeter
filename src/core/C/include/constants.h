@@ -1,6 +1,6 @@
 #pragma once
 
-#define MAX_DEVICES 32
+#define MAX_DEVICES 16
 #define MAX_ROUTES_PER_DEVICE 8
 #define MAX_DEVICE_ID 128
 #define BUFFER_LEN 2048
