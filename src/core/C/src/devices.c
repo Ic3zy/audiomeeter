@@ -32,7 +32,6 @@ static const struct pw_stream_events master_events = {
     .state_changed = on_stream_state_changed};
 
 // SINK CLASS
-
 struct SinkCore *sink_create(char device_id[128]) {}
 void sink_init(struct SinkCore *sink) {}
 
@@ -51,11 +50,9 @@ int sink_set_dB(struct SinkCore *sink, int dB) {
 
   return 0;
 }
-
 // END SINK CLASS
 
 // DEVICE CLASS
-
 struct DeviceCore *device_create(char device_id[128]) {
   struct DeviceCore *device = calloc(1, sizeof(*device));
   if (device == NULL)
@@ -161,5 +158,4 @@ int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
   device->bridged_sinks_count++;
   return 0;
 }
-
 // END DEVICE CLASS

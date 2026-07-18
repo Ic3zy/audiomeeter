@@ -19,9 +19,24 @@ void read_all_device() {
     if (current_core == NULL)
       continue;
 
-    struct pw_buffer *buffer = read_from_device(current_core);
+    struct pw_buffer *buffer =
+        pw_stream_dequeue_buffer(current_core->pw_core.stream);
     if (buffer != NULL) {
+      struct spa_data *data = &buffer->buffer->datas[0];
+
+      float *samples = (float *)((uint8_t *)data->data + data->chunk->offset);
+
+      uint32_t sample_count = data->chunk->size / sizeof(float);
+
+      FILE *fl = fopen("incoming_audio.raw", "ab");
+
+      if (fl != NULL) {
+        fwrite(samples, sizeof(float), sample_count, fl);
+        fclose(fl);
+      }
     }
+    pw_stream_queue_buffer(current_core->pw_core.stream, buffer);
+
     printf("read_all_device\n");
   };
 }

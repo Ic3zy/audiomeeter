@@ -61,5 +61,4 @@ void DeviceRegistry(char device_id[128]) {
   if (SinkRegistry_check_if_exists(device_id) == 1)
     return;
 }
-
 // END DEVICE REGISTRY CLASS

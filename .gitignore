@@ -7,5 +7,4 @@ build
 *.o
 .vscode
 *.raw
-test/
 test2/
