@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Iinclude -g
 
 PW_CFLAGS = -I/usr/include/pipewire-0.3 -I/usr/include/spa-0.2 -D_REENTRANT
-PW_LIBS   = -lpipewire-0.3
+PW_LIBS   = -lpipewire-0.3 -lm
 
 SRC = $(wildcard src/*.c)
 OBJ = $(SRC:.c=.o)

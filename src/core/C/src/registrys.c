@@ -4,17 +4,18 @@
 #include "types.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 // SINK REGISTRY CLASS
-int SinkRegistry_check_if_exists(char device_id[128]) {
+int SinkRegistry_check_if_exists(const char *device_id) {
   if (device_id == NULL)
     abort();
 
   for (int i = 0; i < MAX_DEVICES; i++) {
-    if (global_manager.devices[i] == NULL)
+    if (global_manager.sinks[i] == NULL)
       continue;
 
-    if (strcmp(global_manager.devices[i]->device_id, device_id) == 0)
+    if (strcmp(global_manager.sinks[i]->device_id, device_id) == 0)
       return 1;
   }
 
@@ -37,7 +38,7 @@ void SinkRegistry_create(struct SinkCore *sink) {
 // END SINK REGISTRY CLASS
 
 // DEVICE REGISRY CLASS
-int DeviceRegistry_check_if_exists(char device_id[128]) {
+int DeviceRegistry_check_if_exists(const char *device_id) {
   if (device_id == NULL)
     abort();
 
@@ -52,13 +53,16 @@ int DeviceRegistry_check_if_exists(char device_id[128]) {
   return 0;
 }
 
-void DeviceRegistry(char device_id[128]) {
-  struct DeviceCore *device = device_create(device_id);
+void DeviceRegistry(const char *device_id) {
+  if (device_id == NULL)
+    abort();
 
   if (global_manager.devices_count >= MAX_DEVICES)
     return;
 
-  if (SinkRegistry_check_if_exists(device_id) == 1)
+  if (DeviceRegistry_check_if_exists(device_id) == 1)
     return;
+
+  device_create(device_id);
 }
 // END DEVICE REGISTRY CLASS
