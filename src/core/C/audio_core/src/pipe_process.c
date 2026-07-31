@@ -28,6 +28,23 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
     for (uint32_t i = 0; i < n_samples; i++) {
       in_l[i] = in_l[i] * device->eq.gain;
       in_r[i] = in_r[i] * device->eq.gain;
+
+      if (device->eq.bass == NULL || device->eq.mid == NULL ||
+          device->eq.treble == NULL)
+        continue;
+
+      if (device->eq.bass->db_gain != 0.0f) {
+        in_l[i] = process_sample(device->eq.bass->state_left, in_l[i]);
+        in_r[i] = process_sample(device->eq.bass->state_right, in_r[i]);
+      }
+      if (device->eq.mid->db_gain != 0.0f) {
+        in_l[i] = process_sample(device->eq.mid->state_left, in_l[i]);
+        in_r[i] = process_sample(device->eq.mid->state_right, in_r[i]);
+      }
+      if (device->eq.treble->db_gain != 0.0f) {
+        in_l[i] = process_sample(device->eq.treble->state_left, in_l[i]);
+        in_r[i] = process_sample(device->eq.treble->state_right, in_r[i]);
+      }
     }
   }
 }
@@ -54,8 +71,6 @@ void pipewire_process(void *data, struct spa_io_position *position) {
   uint32_t n_samples = position->clock.duration;
   if (n_samples == 0)
     return;
-
-  static int debug_counter = 0;
 
   // Temporary arrays to store retrieved buffer pointers for this cycle
   float *device_bufs_l[MAX_DEVICES] = {NULL};

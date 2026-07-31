@@ -102,9 +102,26 @@ class AudioCore:
         self.save_sink_device()
         self.initialize_core_devices()
 
+    def set_eq_from_device_name(self, device_name, eq_type, db):
+        if device_name not in self.devices:
+            return
+
+        device = self.devices.get(device_name)
+        if device is None:
+            return
+
+        if eq_type == "bass":
+            device.set_bass_gain(db)
+        elif eq_type == "mid":
+            device.set_mid_gain(db)
+        elif eq_type == "treble":
+            device.set_treble_gain(db)
+
     def save_eq_callback(self, name, sl_number):
-        # EQ features bypassed/passed as requested
-        pass
+        for eq_type in ["Bass", "Mid", "Treble"]:
+            ctx_name = f"s_{sl_number}_{eq_type}"
+            Ctx.add_callback(ctx_name, lambda n=name, cn=ctx_name, e=eq_type.lower(): self.set_eq_from_device_name(n, e, Ctx[cn]/10))
+
 
     def initialize_core_devices(self):
         # We strip the '.monitor' suffix because in PipeWire the node name is just the sink name

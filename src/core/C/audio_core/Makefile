@@ -1,7 +1,11 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Iinclude -g
 
-PW_CFLAGS = -I/usr/include/pipewire-0.3 -I/usr/include/spa-0.2 -D_REENTRANT
+PW_CFLAGS = $(shell pkg-config --cflags libpipewire-0.3)
+
+BIQUAD_CFLAGS = -I$(CURDIR)/../rt_biquad/include
+
+CFLAGS += $(PW_CFLAGS) $(BIQUAD_CFLAGS) -D_REENTRANT
 PW_LIBS   = -lpipewire-0.3 -lm
 
 SRC = $(wildcard src/*.c)

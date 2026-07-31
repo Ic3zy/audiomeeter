@@ -27,6 +27,12 @@ int device_set_dB(struct DeviceCore *device, int dB);
 
 int device_set_gain_from_db(struct DeviceCore *device, float db);
 
+int device_set_bass_gain(struct DeviceCore *device, float db);
+
+int device_set_mid_gain(struct DeviceCore *device, float db);
+
+int device_set_treble_gain(struct DeviceCore *device, float db);
+
 // bridges a sink to device. returns -1 on null args, -2 if reached max routes
 // limit
 int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink);

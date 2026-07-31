@@ -1,6 +1,7 @@
 #pragma once
 
 #include "constants.h"
+#include "rt_biquad.h"
 #include <pipewire/pipewire.h>
 
 // PipeWire core
@@ -20,9 +21,9 @@ struct PwCore {
 
 struct Equalizer {
   float gain;
-  float bass;
-  float mid;
-  float treble;
+  struct rt_band *bass;
+  struct rt_band *mid;
+  struct rt_band *treble;
 };
 
 // output device

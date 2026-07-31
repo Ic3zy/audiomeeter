@@ -1,4 +1,5 @@
 #include "globals.h"
+#include "rt_biquad.h"
 #include "types.h"
 #include <assert.h>
 #include <pipewire/pipewire.h>
@@ -271,6 +272,15 @@ void device_init(struct DeviceCore *device) {
   if (device == NULL)
     abort();
 
+  device->eq.gain = 1.0f;
+
+  device->eq.bass = create_band(BASS_START_HZ, BASS_END_HZ, 0.0f, 48000.0f);
+
+  device->eq.mid = create_band(MID_START_HZ, MID_END_HZ, 0.0f, 48000.0f);
+
+  device->eq.treble =
+      create_band(TREBLE_START_HZ, TREBLE_END_HZ, 0.0f, 48000.0f);
+
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 
   char port_name_l[256];
@@ -367,6 +377,47 @@ int device_set_gain_from_db(struct DeviceCore *device, float db) {
     gain = powf(10.0f, db / 20.0f);
 
   device->eq.gain = gain;
+  return 0;
+}
+
+int device_set_bass_gain(struct DeviceCore *device, float db) {
+  if (device == NULL)
+    return -1;
+
+  struct rt_band *band = device->eq.bass;
+  if (band == NULL)
+    return -1;
+
+  int r = update_band(band, BASS_START_HZ, BASS_END_HZ, db, 48000.0f);
+
+  printf("bass: %d\n", r);
+
+  return 0;
+}
+
+int device_set_mid_gain(struct DeviceCore *device, float db) {
+  if (device == NULL)
+    return -1;
+
+  struct rt_band *band = device->eq.mid;
+  if (band == NULL)
+    return -1;
+
+  update_band(band, MID_START_HZ, MID_END_HZ, db, 48000.0f);
+
+  return 0;
+}
+
+int device_set_treble_gain(struct DeviceCore *device, float db) {
+  if (device == NULL)
+    return -1;
+
+  struct rt_band *band = device->eq.treble;
+  if (band == NULL)
+    return -1;
+
+  update_band(band, TREBLE_START_HZ, TREBLE_END_HZ, db, 48000.0f);
+
   return 0;
 }
 
