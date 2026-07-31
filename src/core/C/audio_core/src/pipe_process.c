@@ -11,7 +11,7 @@
 #define step 10
 
 // Helper function to convert peak amplitude to dB
-static int amplitude_to_db(float max_val) {
+static inline int amplitude_to_db(float max_val) {
   if (max_val < 0.00001f) {
     return -100; // Silence floor
   }
@@ -28,6 +28,19 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
     for (uint32_t i = 0; i < n_samples; i++) {
       in_l[i] = in_l[i] * device->eq.gain;
       in_r[i] = in_r[i] * device->eq.gain;
+    }
+  }
+}
+
+static inline void sink_apply_filter(struct SinkCore *sink, float *in_l,
+                                     float *in_r, uint32_t n_samples) {
+  if (in_l == NULL && in_r == NULL)
+    return;
+
+  if (sink->eq.gain != 0) {
+    for (uint32_t i = 0; i < n_samples; i++) {
+      in_l[i] = in_l[i] * sink->eq.gain;
+      in_r[i] = in_r[i] * sink->eq.gain;
     }
   }
 }
@@ -180,15 +193,19 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     float *out_r = sink_bufs_r[s];
     float max_val = 0.0f;
 
+    sink_apply_filter(sink, out_l, out_r, n_samples);
+
     if (out_l) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
+           step_cnt++, i += step) {
         float val = fabsf(out_l[i]);
         if (val > max_val)
           max_val = val;
       }
     }
     if (out_r) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
+           step_cnt++, i += step) {
         float val = fabsf(out_r[i]);
         if (val > max_val)
           max_val = val;

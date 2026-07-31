@@ -225,6 +225,22 @@ int sink_set_dB(struct SinkCore *sink, int dB) {
   sink->dB = dB;
   return 0;
 }
+
+int sink_set_gain_from_db(struct SinkCore *sink, float db) {
+  if (sink == NULL)
+    return -1;
+
+  float gain = 0.0f;
+
+  if (db <= -60.0f)
+    gain = 0.0f;
+
+  else
+    gain = powf(10.0f, db / 20.0f);
+
+  sink->eq.gain = gain;
+  return 0;
+}
 // END SINK CLASS
 
 // DEVICE CLASS

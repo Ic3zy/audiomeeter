@@ -12,6 +12,8 @@ int sink_get_dB(struct SinkCore *sink);
 
 int sink_set_dB(struct SinkCore *sink, int dB);
 
+int sink_set_gain_from_db(struct SinkCore *sink, float db);
+
 /* --- DEVICES --- */
 
 // creates device core, will abort if calloc fails

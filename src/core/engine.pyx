@@ -23,6 +23,7 @@ cdef extern from "devices.h":
     SinkCore *sink_create(const char *name, const char *device_id)
     int sink_get_dB(SinkCore *sink)
     int sink_set_dB(SinkCore *sink, int dB)
+    int sink_set_gain_from_db(SinkCore *sink, float db)
     void sink_link(SinkCore *sink)
     int sink_delete(SinkCore *sink)
 
@@ -74,6 +75,10 @@ cdef class Sink:
     def dB(self) -> int:
         self._check()
         return sink_get_dB(self._ptr)
+
+    def set_gain_from_db(self, float db):
+        self._check()
+        return sink_set_gain_from_db(self._ptr, db)
 
     def delete(self):
         if self._alive:
