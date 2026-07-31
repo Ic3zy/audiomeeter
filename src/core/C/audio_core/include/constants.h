@@ -7,8 +7,10 @@
 #define SAMPLES_COUNT (BUFFER_LEN / 4)
 
 #define BASS_START_HZ 20.0f
-#define BASS_END_HZ 200.0f
-#define MID_START_HZ 200.0f
-#define MID_END_HZ 2000.0f
-#define TREBLE_START_HZ 2000.0f
+#define BASS_END_HZ 180.0f
+
+#define MID_START_HZ 600.0f
+#define MID_END_HZ 1700.0f
+
+#define TREBLE_START_HZ 6000.0f
 #define TREBLE_END_HZ 20000.0f
