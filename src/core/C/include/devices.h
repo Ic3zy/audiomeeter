@@ -28,3 +28,7 @@ int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink);
 
 void sink_link(struct SinkCore *sink);
 void device_link(struct DeviceCore *device);
+
+int sink_delete(struct SinkCore *sink);
+int device_delete(struct DeviceCore *device);
+int device_remove_bridged_sink(struct DeviceCore *device, struct SinkCore *sink);

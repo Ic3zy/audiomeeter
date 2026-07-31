@@ -4,6 +4,7 @@ from pulsectl import _pulsectl as c
 
 from base import Ctx
 import asyncio
+from . import engine
 
 # from .cython_core.audio_core import (
 #     init_audio_system,
@@ -91,43 +92,41 @@ class VirtualDevices:
 
 class AudioCore:
     def __init__(self):
-        # init_audio_system()
+        engine.init()
         self.archived_routes = []
         self.watch_devices = {}
-
-        self.distributor = Ctx["distributor"]
+        
+        self.sinks = {}
+        self.devices = {}
+        
         self.save_sink_device()
-        # {"device_name": (device, ctx_dB_name)}
         self.initialize_core_devices()
 
-
     def save_eq_callback(self, name, sl_number):
-        for eq_type in ["Bass", "Mid", "Treble"]:
-            ctx_name = f"s_{sl_number}_{eq_type}"
-            Ctx.add_callback(ctx_name, lambda n=name, cn=ctx_name, e=eq_type.lower(): self.distributor.set_eq_from_device_name(n, e, Ctx[cn]/10))
-
+        # EQ features bypassed/passed as requested
+        pass
 
     def initialize_core_devices(self):
-        name_to_id = {"input_main": "audiomeeter-input.monitor", "input_aux": "audiomeeter-aux-input.monitor"}
+        # We strip the '.monitor' suffix because in PipeWire the node name is just the sink name
+        name_to_id = {
+            "input_main": "audiomeeter-input",
+            "input_aux": "audiomeeter-aux-input"
+        }
         
         for (name, id) in name_to_id.items():
-            print(f" [AudioCore] initiliaze_core_devices: {name}, {id}")
-            if name == "input_main":
-                a = self.distributor.create_listen_device(id, name, is_main_device=1)
-                ids = 4
-                print(f"s_sl_{ids}")
-                self.save_eq_callback(name, ids)
-                Ctx.add_callback(f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False))
+            print(f" [AudioCore] initialize_core_devices: {name}, {id}")
+            dev = engine.Device(id)
+            self.devices[name] = dev
+            
+            # Allow PipeWire loop to register the ports before linking
+            loop = asyncio.get_event_loop()
+            loop.call_later(0.1, dev.link)
 
-            else:
-                a = self.distributor.create_listen_device(id, name)
-                ids = 5
-                self.save_eq_callback(name, ids)
-                Ctx.add_callback(f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False))
+            ids = 4 if name == "input_main" else 5
+            self.save_eq_callback(name, ids)
+            Ctx.add_callback(f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False))
 
-            self.add_watch_device(a, name, name)
-
-            a.start()
+            self.add_watch_device(dev, name, name)
 
     async def dB_watchdog(self):
         try:
@@ -136,15 +135,16 @@ class AudioCore:
                 for (device_name, (device, ctx_dB_name)) in self.watch_devices.items():
                     last_db = lasts.get(device_name, 0)
                     
-                    db = device.get_dB()
+                    try:
+                        db = device.dB
+                    except Exception:
+                        continue
 
                     if db != last_db:
                         lasts[device_name] = db
-                        
                         Ctx[ctx_dB_name] = db
 
-
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
         except Exception as e:
             print(f"dB_watchdog error: {e}")
 
@@ -155,15 +155,12 @@ class AudioCore:
         archived = self.get_archived_by_sink_name(sink_name)
         if archived is None:
             self.archived_routes.append((sink_name, v_d_name, s_name))
-        else:
-            # TODO: remove duplicated routes
-            pass
     
     def get_archived_by_sink_name(self, target_sink_name):
         for (sink_name, source_id, s_name) in self.archived_routes:
             if sink_name == target_sink_name:
                 return (source_id, s_name)
-
+        return None
         
     def route_audio(self, source_id, s_name):
         sink_name = f"H_Out_{s_name}_id"
@@ -173,43 +170,57 @@ class AudioCore:
         if is_route is None:
             raise ValueError(f"s_{source_id} is not defined.")
 
-        # virtual device name
         if isinstance(source_id, int):
             v_d_name = "input_main" if source_id == 4 else "input_aux"
-
             if source_id < 4:
-            # no process from mic devices.
                return
         else:
             return
 
-        # No except
         if sink is None:
             self.archived_routes.append((sink_name, source_id, s_name))
             return
 
         print(f" [AudioCore] route_audio: {v_d_name} -> {s_name}")
 
+        device_obj = self.devices.get(v_d_name)
+        sink_obj = self.sinks.get(s_name)
+
         if is_route:
-            try:
-                self.distributor.create_bridge(v_d_name, s_name)
-            except ValueError:
+            if device_obj and sink_obj:
+                try:
+                    device_obj.bridge(sink_obj)
+                except Exception as e:
+                    print(f" [AudioCore] route_audio bridge error: {e}")
+                    self.archived_routes.append((sink_name, source_id, s_name))
+            else:
                 self.archived_routes.append((sink_name, source_id, s_name))
         else:
-            try:
-                self.distributor.remove_bridge(v_d_name, s_name)
-            except ValueError:
-                if sink_name in self.archived_routes:
-                    self.archived_routes.remove(sink_name)
-            
+            if device_obj and sink_obj:
+                try:
+                    device_obj.unbridge(sink_obj)
+                except Exception as e:
+                    print(f" [AudioCore] route_audio unbridge error: {e}")
     
     def create_sink(self, device_id, device_name, sink_name):
         print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
         archived_bridge = self.get_archived_by_sink_name(sink_name)
-            
-        print(f" [AudioCore] create_sink: {device_id}, {device_name}")
 
-        sink = self.distributor.create_sink(device_id, device_name)
+        # Delete existing sink if it exists
+        if device_name in self.sinks:
+            old_sink = self.sinks[device_name]
+            # Remove watch device association
+            if device_name in self.watch_devices:
+                del self.watch_devices[device_name]
+            old_sink.delete()
+
+        sink = engine.Sink(device_id)
+        self.sinks[device_name] = sink
+        
+        # Allow PipeWire loop to register the ports before linking
+        loop = asyncio.get_event_loop()
+        loop.call_later(0.1, sink.link)
+
         ctx_name = f"s_led_{int(device_name[-1])+5}"
         self.add_watch_device(sink, device_name, ctx_name)
 
@@ -217,17 +228,8 @@ class AudioCore:
             self.route_audio(archived_bridge[0], archived_bridge[1])
 
     def set_db(self, device_name, device_id, is_sink=True):
-        db = Ctx.get(f"s_sl_{device_id}" )
-        if db is None:
-            return
-        try:
-            print(f" [AudioCore] set_db: {device_name}, {db}")
-            if is_sink:
-                self.distributor.set_db_from_sink_name(device_name, db)
-            else:
-                self.distributor.set_db_from_device_name(device_name, db)
-        except Exception as e:
-            print(f" [AudioCore] set_db error: {e}")
+        # Bypassed - dB is level meter now
+        pass
 
     def save_sink_device(self):
         devices = ["A1", "A2", "A3"]

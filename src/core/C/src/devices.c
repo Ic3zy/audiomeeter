@@ -1,8 +1,6 @@
 #include "globals.h"
-#include "pipe_process.h"
 #include "types.h"
 #include <assert.h>
-#include <math.h>
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
 #include <stdbool.h>
@@ -190,7 +188,6 @@ void device_init(struct DeviceCore *device) {
   if (device == NULL)
     abort();
 
-  // PipeWire Thread Kilitlenir
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 
   char port_name_l[256];
@@ -283,6 +280,141 @@ int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
 
   device->bridged_sinks[device->bridged_sinks_count] = sink;
   device->bridged_sinks_count++;
+  return 0;
+}
+
+int device_remove_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
+  if (device == NULL || sink == NULL)
+    return -1;
+
+  int found_idx = -1;
+  for (int i = 0; i < device->bridged_sinks_count; i++) {
+    if (device->bridged_sinks[i] == sink) {
+      found_idx = i;
+      break;
+    }
+  }
+
+  if (found_idx == -1)
+    return -1; // Not found
+
+  // Shift elements to the left to remove
+  for (int i = found_idx; i < device->bridged_sinks_count - 1; i++) {
+    device->bridged_sinks[i] = device->bridged_sinks[i + 1];
+  }
+  device->bridged_sinks[device->bridged_sinks_count - 1] = NULL;
+  device->bridged_sinks_count--;
+
+  return 0;
+}
+
+int sink_delete(struct SinkCore *sink) {
+  if (sink == NULL)
+    return -1;
+
+  // 1. Lock the threaded loop to safely remove resources from PipeWire graph
+  pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
+
+  // 2. Destroy links
+  if (sink->pw_core.link_l != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_l);
+    sink->pw_core.link_l = NULL;
+  }
+  if (sink->pw_core.link_r != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_r);
+    sink->pw_core.link_r = NULL;
+  }
+
+  // 3. Remove ports from filter
+  if (sink->pw_core.port_l != NULL) {
+    pw_filter_remove_port(sink->pw_core.port_l);
+    sink->pw_core.port_l = NULL;
+  }
+  if (sink->pw_core.port_r != NULL) {
+    pw_filter_remove_port(sink->pw_core.port_r);
+    sink->pw_core.port_r = NULL;
+  }
+
+  pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
+
+  // 4. Remove sink reference from all device bridged_sinks lists
+  for (int d = 0; d < global_manager.devices_count; d++) {
+    struct DeviceCore *dev = global_manager.devices[d];
+    if (dev != NULL) {
+      device_remove_bridged_sink(dev, sink);
+    }
+  }
+
+  // 5. Remove sink from global sinks array
+  int found_idx = -1;
+  for (int i = 0; i < global_manager.sinks_count; i++) {
+    if (global_manager.sinks[i] == sink) {
+      found_idx = i;
+      break;
+    }
+  }
+
+  if (found_idx != -1) {
+    for (int i = found_idx; i < global_manager.sinks_count - 1; i++) {
+      global_manager.sinks[i] = global_manager.sinks[i + 1];
+    }
+    global_manager.sinks[global_manager.sinks_count - 1] = NULL;
+    global_manager.sinks_count--;
+  }
+
+  // 6. Free memory
+  free(sink);
+  return 0;
+}
+
+int device_delete(struct DeviceCore *device) {
+  if (device == NULL)
+    return -1;
+
+  // 1. Lock threaded loop
+  pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
+
+  // 2. Destroy links
+  if (device->pw_core.link_l != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_l);
+    device->pw_core.link_l = NULL;
+  }
+  if (device->pw_core.link_r != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_r);
+    device->pw_core.link_r = NULL;
+  }
+
+  // 3. Remove ports from filter
+  if (device->pw_core.port_l != NULL) {
+    pw_filter_remove_port(device->pw_core.port_l);
+    device->pw_core.port_l = NULL;
+  }
+  if (device->pw_core.port_r != NULL) {
+    pw_filter_remove_port(device->pw_core.port_r);
+    device->pw_core.port_r = NULL;
+  }
+
+  pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
+
+  // 4. Remove device from global devices array
+  int found_idx = -1;
+  for (int i = 0; i < global_manager.devices_count; i++) {
+    if (global_manager.devices[i] == device) {
+      found_idx = i;
+      break;
+    }
+  }
+
+  if (found_idx != -1) {
+    for (int i = found_idx; i < global_manager.devices_count - 1; i++) {
+      global_manager.devices[i] = global_manager.devices[i + 1];
+    }
+    global_manager.devices[global_manager.devices_count - 1] = NULL;
+    global_manager.devices_count--;
+  }
+
+  // 5. Free memory
+  free(device);
   return 0;
 }
 // END DEVICE CLASS
