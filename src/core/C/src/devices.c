@@ -32,6 +32,42 @@ static const struct pw_proxy_events link_proxy_events = {
     .error = on_link_proxy_error,
 };
 
+/* ── Sync roundtrip helper ─────────────────────────────────────────────────
+ * Blocks (with loop already locked) until the PipeWire server has processed
+ * all pending requests up to this point.  Use after pw_proxy_destroy() calls
+ * to guarantee the server has removed the old links before we create new ones.
+ */
+struct _sync_state {
+  struct pw_thread_loop *loop;
+  int pending_seq;
+  bool done;
+};
+
+static void _on_core_done(void *data, uint32_t id, int seq) {
+  struct _sync_state *s = data;
+  if (id == PW_ID_CORE && seq == s->pending_seq) {
+    s->done = true;
+    pw_thread_loop_signal(s->loop, false);
+  }
+}
+
+static const struct pw_core_events _sync_core_events = {
+  PW_VERSION_CORE_EVENTS,
+  .done = _on_core_done,
+};
+
+/* Must be called with the thread loop already locked. */
+static void pw_sync_roundtrip(struct pw_thread_loop *loop,
+                              struct pw_core *core) {
+  struct _sync_state state = {.loop = loop, .done = false};
+  struct spa_hook core_listener;
+  pw_core_add_listener(core, &core_listener, &_sync_core_events, &state);
+  state.pending_seq = pw_core_sync(core, PW_ID_CORE, 0);
+  while (!state.done)
+    pw_thread_loop_wait(loop);
+  spa_hook_remove(&core_listener);
+}
+
 struct pw_link *create_pw_link(struct pw_core *core, const char *output_node,
                                const char *output_port, const char *input_node,
                                const char *input_port) {
@@ -325,6 +361,12 @@ int sink_delete(struct SinkCore *sink) {
     pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_r);
     sink->pw_core.link_r = NULL;
   }
+
+  // Wait for the server to confirm the link destroys before we proceed.
+  // Without this roundtrip, creating a new link to the same physical port
+  // immediately after returns EEXIST (-17).
+  pw_sync_roundtrip(global_manager.pw_manager.threaded_loop,
+                    global_manager.pw_manager.core);
 
   // 3. Remove ports from filter
   if (sink->pw_core.port_l != NULL) {
