@@ -67,6 +67,9 @@ class ctx:
         self._shared_data[key] = value
         self.callback_call(key)
 
+    def __contains__(self, key):
+        return key in self._shared_data
+
     def __getitem__(self, key):
         if key in self._shared_data:
             return self._shared_data[key]

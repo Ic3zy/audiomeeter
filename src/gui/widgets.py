@@ -1507,12 +1507,16 @@ class Select_hardware_output_buttons(QWidget):
         self.setFixedSize(25, 35) 
         self.text = f"A{slider_number}"
 
-    def clear_other(self, name):
+    def clear_other(self, name, id):
         others = []
         for _ in range(3):
             ctx_name = f"H_Out_A{_+1}"
-            if Ctx[ctx_name] == name:
+            ctx_r_name = f"H_Out_A{_+1}_id"
+            if ctx_name in Ctx and Ctx[ctx_name] == name:
                 Ctx[ctx_name] = ""
+
+            if ctx_r_name in Ctx and Ctx[ctx_r_name] == id:
+                Ctx[ctx_r_name] = None
         
         return others
 
@@ -1525,7 +1529,7 @@ class Select_hardware_output_buttons(QWidget):
             ctx_name = f"H_Out_A{self.slider_number}"
             ctx_r_name = f"H_Out_A{self.slider_number}_id"
 
-            self.clear_other(device_name)
+            self.clear_other(device_name, device_id)
 
             if Ctx[ctx_name] == device_name:
                 Ctx[ctx_name] = ""
