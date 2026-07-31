@@ -7,6 +7,9 @@
 #include "globals.h"
 #include "types.h"
 
+#define max_steps 10
+#define step 10
+
 // Helper function to convert peak amplitude to dB
 static int amplitude_to_db(float max_val) {
   if (max_val < 0.00001f) {
@@ -14,6 +17,19 @@ static int amplitude_to_db(float max_val) {
   }
   float db = 20.0f * log10f(max_val);
   return (int)roundf(db);
+}
+
+static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
+                                       float *in_r, uint32_t n_samples) {
+  if (in_l == NULL && in_r == NULL)
+    return;
+
+  if (device->eq.gain != 0) {
+    for (uint32_t i = 0; i < n_samples; i++) {
+      in_l[i] = in_l[i] * device->eq.gain;
+      in_r[i] = in_r[i] * device->eq.gain;
+    }
+  }
 }
 
 void pipewire_process(void *data, struct spa_io_position *position) {
@@ -27,14 +43,6 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     return;
 
   static int debug_counter = 0;
-  bool do_debug = (++debug_counter % 50 == 0);
-
-  if (do_debug) {
-    printf("[AudioMeeter Debug] process callback: n_samples = %u, "
-           "devices_count = %d, sinks_count = %d\n",
-           n_samples, global_manager.devices_count, global_manager.sinks_count);
-    fflush(stdout);
-  }
 
   // Temporary arrays to store retrieved buffer pointers for this cycle
   float *device_bufs_l[MAX_DEVICES] = {NULL};
@@ -72,6 +80,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
         pw_filter_get_dsp_buffer(device->pw_core.port_l, n_samples);
     device_bufs_r[d] =
         pw_filter_get_dsp_buffer(device->pw_core.port_r, n_samples);
+
+    device_apply_filter(device, device_bufs_l[d], device_bufs_r[d], n_samples);
   }
 
   // Mix inputs to target bridged sinks using stored pointers (with 1.0 gain)
@@ -142,14 +152,17 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     float max_val = 0.0f;
 
     if (in_l) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
+           step_cnt++, i += step) {
         float val = fabsf(in_l[i]);
         if (val > max_val)
           max_val = val;
       }
     }
+
     if (in_r) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
+           step_cnt++, i += step) {
         float val = fabsf(in_r[i]);
         if (val > max_val)
           max_val = val;
@@ -182,10 +195,5 @@ void pipewire_process(void *data, struct spa_io_position *position) {
       }
     }
     sink->dB = amplitude_to_db(max_val);
-
-    // if (do_debug) {
-    //   printf("  Sink %s Peak Volume: %d dB\n", sink->device_id, sink->dB);
-    //   fflush(stdout);
-    // }
   }
 }

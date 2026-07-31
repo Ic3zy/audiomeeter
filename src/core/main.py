@@ -224,8 +224,20 @@ class AudioCore:
                 self.route_audio(i, device_name)
 
     def set_db(self, device_name, device_id, is_sink=True):
-        # Bypassed - dB is level meter now
-        pass
+        if is_sink:
+            return
+
+        print(f" [AudioCore] set_db: {device_name}, {device_id}")
+        print(self.devices)
+
+        db = Ctx.get(f"s_sl_{device_id}")
+        if db is None:
+            return
+        
+        device_obj = self.devices.get(device_name)
+        device_obj.set_gain_from_db(db)
+
+
 
     def save_sink_device(self):
         devices = ["A1", "A2", "A3"]

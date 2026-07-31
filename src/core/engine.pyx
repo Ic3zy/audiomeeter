@@ -29,6 +29,7 @@ cdef extern from "devices.h":
     DeviceCore *device_create(const char *device_id)
     int device_get_dB(DeviceCore *device)
     int device_set_dB(DeviceCore *device, int dB)
+    int device_set_gain_from_db(DeviceCore *device, float db)
     void device_link(DeviceCore *device)
     int device_delete(DeviceCore *device)
 
@@ -117,6 +118,10 @@ cdef class Device:
     def dB(self) -> int:
         self._check()
         return device_get_dB(self._ptr)
+    
+    def set_gain_from_db(self, float db):
+        self._check()
+        return device_set_gain_from_db(self._ptr, db)
 
     def bridge(self, Sink sink not None):
         self._check()

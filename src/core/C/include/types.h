@@ -19,21 +19,26 @@ struct PwCore {
 };
 
 struct Equalizer {
-  // TODO: implement
-  int k;
+  float gain;
+  float bass;
+  float mid;
+  float treble;
 };
 
 // output device
 struct SinkCore {
+  struct Equalizer eq;
+
   struct PwCore pw_core;
 
-  char name[32];                // slot name (e.g. "A1", "A2", "A3")
+  char name[32];                 // slot name (e.g. "A1", "A2", "A3")
   char device_id[MAX_DEVICE_ID]; // PipeWire node name
   int dB;
 };
 
 // input device
 struct DeviceCore {
+  struct Equalizer eq;
   struct PwCore pw_core;
   struct SinkCore *bridged_sinks[MAX_ROUTES_PER_DEVICE];
   int bridged_sinks_count;

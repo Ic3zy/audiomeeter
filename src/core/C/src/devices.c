@@ -52,8 +52,8 @@ static void _on_core_done(void *data, uint32_t id, int seq) {
 }
 
 static const struct pw_core_events _sync_core_events = {
-  PW_VERSION_CORE_EVENTS,
-  .done = _on_core_done,
+    PW_VERSION_CORE_EVENTS,
+    .done = _on_core_done,
 };
 
 /* Must be called with the thread loop already locked. */
@@ -208,7 +208,8 @@ struct SinkCore *sink_create(const char *name, const char *device_id) {
 }
 
 void sink_link(struct SinkCore *sink) {
-  // Now a no-op: linking is done atomically inside sink_create/sink_setup_pw_locked
+  // Now a no-op: linking is done atomically inside
+  // sink_create/sink_setup_pw_locked
   (void)sink;
 }
 
@@ -337,11 +338,28 @@ int device_set_dB(struct DeviceCore *device, int dB) {
   return 0;
 }
 
+int device_set_gain_from_db(struct DeviceCore *device, float db) {
+  if (device == NULL)
+    return -1;
+
+  float gain = 0.0f;
+
+  if (db <= -60.0f)
+    gain = 0.0f;
+
+  else
+    gain = powf(10.0f, db / 20.0f);
+
+  device->eq.gain = gain;
+  return 0;
+}
+
 int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
   if (device == NULL || sink == NULL)
     return -1;
 
-  // Check if sink is already bridged to prevent duplicate routes (which multiplies the volume)
+  // Check if sink is already bridged to prevent duplicate routes (which
+  // multiplies the volume)
   for (int i = 0; i < device->bridged_sinks_count; i++) {
     if (device->bridged_sinks[i] == sink) {
       return 0; // Already bridged, do nothing
@@ -356,12 +374,13 @@ int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
   return 0;
 }
 
-int device_remove_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
+int device_remove_bridged_sink(struct DeviceCore *device,
+                               struct SinkCore *sink) {
   if (device == NULL || sink == NULL)
     return -1;
 
   int removed = 0;
-  for (int i = 0; i < device->bridged_sinks_count; ) {
+  for (int i = 0; i < device->bridged_sinks_count;) {
     if (device->bridged_sinks[i] == sink) {
       for (int j = i; j < device->bridged_sinks_count - 1; j++) {
         device->bridged_sinks[j] = device->bridged_sinks[j + 1];

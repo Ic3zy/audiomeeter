@@ -23,6 +23,8 @@ int device_get_dB(struct DeviceCore *device);
 
 int device_set_dB(struct DeviceCore *device, int dB);
 
+int device_set_gain_from_db(struct DeviceCore *device, float db);
+
 // bridges a sink to device. returns -1 on null args, -2 if reached max routes
 // limit
 int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink);
@@ -32,4 +34,5 @@ void device_link(struct DeviceCore *device);
 
 int sink_delete(struct SinkCore *sink);
 int device_delete(struct DeviceCore *device);
-int device_remove_bridged_sink(struct DeviceCore *device, struct SinkCore *sink);
+int device_remove_bridged_sink(struct DeviceCore *device,
+                               struct SinkCore *sink);
