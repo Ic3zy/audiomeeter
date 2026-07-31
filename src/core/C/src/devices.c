@@ -22,6 +22,7 @@ static void on_link_proxy_error(void *data, int seq, int res,
 
 static void on_link_proxy_destroy(void *data) {
   struct link_proxy_data *pdata = data;
+  spa_hook_remove(&pdata->proxy_listener);
   free(pdata);
 }
 
