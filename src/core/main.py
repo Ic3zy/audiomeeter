@@ -164,11 +164,10 @@ class AudioCore:
         
     def route_audio(self, source_id, s_name):
         sink_name = f"H_Out_{s_name}_id"
-        sink = Ctx.get(sink_name)
 
         is_route = Ctx.get(f"s_{source_id}_{s_name}")
         if is_route is None:
-            raise ValueError(f"s_{source_id} is not defined.")
+            return
 
         if isinstance(source_id, int):
             v_d_name = "input_main" if source_id == 4 else "input_aux"
@@ -177,14 +176,10 @@ class AudioCore:
         else:
             return
 
-        if sink is None:
-            self.archived_routes.append((sink_name, source_id, s_name))
-            return
-
-        print(f" [AudioCore] route_audio: {v_d_name} -> {s_name}")
-
         device_obj = self.devices.get(v_d_name)
         sink_obj = self.sinks.get(s_name)
+
+        print(f" [AudioCore] route_audio: {v_d_name} -> {s_name} (active: {is_route})")
 
         if is_route:
             if device_obj and sink_obj:
@@ -192,40 +187,41 @@ class AudioCore:
                     device_obj.bridge(sink_obj)
                 except Exception as e:
                     print(f" [AudioCore] route_audio bridge error: {e}")
-                    self.archived_routes.append((sink_name, source_id, s_name))
-            else:
-                self.archived_routes.append((sink_name, source_id, s_name))
         else:
             if device_obj and sink_obj:
                 try:
                     device_obj.unbridge(sink_obj)
                 except Exception as e:
                     print(f" [AudioCore] route_audio unbridge error: {e}")
-    
+
     def create_sink(self, device_id, device_name, sink_name):
         print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
-        archived_bridge = self.get_archived_by_sink_name(sink_name)
 
-        # Delete existing sink if it exists
+        if not device_id:
+            if device_name in self.sinks:
+                old_sink = self.sinks.pop(device_name)
+                if device_name in self.watch_devices:
+                    del self.watch_devices[device_name]
+                old_sink.delete()
+            return
+
+        # Safely delete existing sink if it exists
         if device_name in self.sinks:
             old_sink = self.sinks[device_name]
-            # Remove watch device association
             if device_name in self.watch_devices:
                 del self.watch_devices[device_name]
             old_sink.delete()
 
-        sink = engine.Sink(device_id)
+        sink = engine.Sink(device_name, device_id)
         self.sinks[device_name] = sink
-        
-        # Allow PipeWire loop to register the ports before linking
-        loop = asyncio.get_event_loop()
-        loop.call_later(0.1, sink.link)
 
         ctx_name = f"s_led_{int(device_name[-1])+5}"
         self.add_watch_device(sink, device_name, ctx_name)
 
-        if archived_bridge is not None:
-            self.route_audio(archived_bridge[0], archived_bridge[1])
+        # Re-evaluate all active route flags from Ctx (s_1_A1 .. s_5_A1) for this sink
+        for i in range(1, 6):
+            if Ctx.get(f"s_{i}_{device_name}"):
+                self.route_audio(i, device_name)
 
     def set_db(self, device_name, device_id, is_sink=True):
         # Bypassed - dB is level meter now

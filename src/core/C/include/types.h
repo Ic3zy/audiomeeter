@@ -27,7 +27,8 @@ struct Equalizer {
 struct SinkCore {
   struct PwCore pw_core;
 
-  char device_id[MAX_DEVICE_ID];
+  char name[32];                // slot name (e.g. "A1", "A2", "A3")
+  char device_id[MAX_DEVICE_ID]; // PipeWire node name
   int dB;
 };
 

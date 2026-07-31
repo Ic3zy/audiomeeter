@@ -105,38 +105,44 @@ void sink_init(struct SinkCore *sink);
 void device_init(struct DeviceCore *device);
 
 // SINK CLASS
-struct SinkCore *sink_create(const char *device_id) {
-  if (global_manager.sinks_count >=
-      (int)(sizeof(global_manager.sinks) / sizeof(global_manager.sinks[0]))) {
-    fprintf(stderr, "[pipe_process] sink_create: max sink count reached\n");
-    return NULL;
+
+// Internal: tear down PipeWire resources of a sink (links + ports) inside an
+// already-held lock, then sync roundtrip so the server fully processes the
+// removes before we reuse port IDs.
+static void sink_teardown_pw_locked(struct SinkCore *sink) {
+  // Destroy links
+  if (sink->pw_core.link_l != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_l);
+    sink->pw_core.link_l = NULL;
+  }
+  if (sink->pw_core.link_r != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_r);
+    sink->pw_core.link_r = NULL;
   }
 
-  struct SinkCore *sink = calloc(1, sizeof(*sink));
-  if (sink == NULL)
-    abort();
+  // Remove ports
+  if (sink->pw_core.port_l != NULL) {
+    pw_filter_remove_port(sink->pw_core.port_l);
+    sink->pw_core.port_l = NULL;
+  }
+  if (sink->pw_core.port_r != NULL) {
+    pw_filter_remove_port(sink->pw_core.port_r);
+    sink->pw_core.port_r = NULL;
+  }
 
-  strncpy(sink->device_id, device_id, sizeof(sink->device_id) - 1);
-  sink->dB = 0; // Default volume is 0 dB (gain = 1.0)
-
-  global_manager.sinks[global_manager.sinks_count] = sink;
-  global_manager.sinks_count++;
-
-  sink_init(sink);
-
-  return sink;
+  // Roundtrip: wait for server to confirm all destroys
+  pw_sync_roundtrip(global_manager.pw_manager.threaded_loop,
+                    global_manager.pw_manager.core);
 }
 
-void sink_init(struct SinkCore *sink) {
-  if (sink == NULL)
-    abort();
-
-  pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
-
+// Internal: create PipeWire ports + links for a sink inside an already-held
+// lock, then sync roundtrip to ensure ports are registered before linking.
+static void sink_setup_pw_locked(struct SinkCore *sink) {
+  // Use the slot name for port names so they are stable across reassignments
   char port_name_l[256];
   char port_name_r[256];
-  snprintf(port_name_l, sizeof(port_name_l), "%s_L", sink->device_id);
-  snprintf(port_name_r, sizeof(port_name_r), "%s_R", sink->device_id);
+  snprintf(port_name_l, sizeof(port_name_l), "%s_L", sink->name);
+  snprintf(port_name_r, sizeof(port_name_r), "%s_R", sink->name);
 
   struct pw_properties *props_l =
       pw_properties_new(PW_KEY_FORMAT_DSP, "32 bit float mono audio",
@@ -148,39 +154,62 @@ void sink_init(struct SinkCore *sink) {
   sink->pw_core.port_l =
       pw_filter_add_port(global_manager.filter, PW_DIRECTION_OUTPUT,
                          PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_l, NULL, 0);
-
   sink->pw_core.port_r =
       pw_filter_add_port(global_manager.filter, PW_DIRECTION_OUTPUT,
                          PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_r, NULL, 0);
 
   if (sink->pw_core.port_l == NULL || sink->pw_core.port_r == NULL) {
-    pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
+    fprintf(stderr, "[AudioMeeter] FATAL: failed to add ports for sink %s\n",
+            sink->name);
     abort();
   }
 
-  pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
-}
+  // Roundtrip: wait for server to register the ports before linking
+  pw_sync_roundtrip(global_manager.pw_manager.threaded_loop,
+                    global_manager.pw_manager.core);
 
-void sink_link(struct SinkCore *sink) {
-  if (sink == NULL)
-    abort();
-
-  pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
-
-  char port_name_l[256];
-  char port_name_r[256];
-  snprintf(port_name_l, sizeof(port_name_l), "%s_L", sink->device_id);
-  snprintf(port_name_r, sizeof(port_name_r), "%s_R", sink->device_id);
-
+  // Create links
   sink->pw_core.link_l =
       create_pw_link(global_manager.pw_manager.core, ENGINE_NODE_NAME,
                      port_name_l, sink->device_id, "playback_FL");
-
   sink->pw_core.link_r =
       create_pw_link(global_manager.pw_manager.core, ENGINE_NODE_NAME,
                      port_name_r, sink->device_id, "playback_FR");
+}
+
+struct SinkCore *sink_create(const char *name, const char *device_id) {
+  if (name == NULL || device_id == NULL)
+    return NULL;
+
+  if (global_manager.sinks_count >=
+      (int)(sizeof(global_manager.sinks) / sizeof(global_manager.sinks[0]))) {
+    fprintf(stderr, "[AudioMeeter] sink_create: max sink count reached\n");
+    return NULL;
+  }
+
+  struct SinkCore *sink = calloc(1, sizeof(*sink));
+  if (sink == NULL)
+    abort();
+
+  strncpy(sink->name, name, sizeof(sink->name) - 1);
+  strncpy(sink->device_id, device_id, sizeof(sink->device_id) - 1);
+  sink->dB = 0;
+
+  pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
+
+  global_manager.sinks[global_manager.sinks_count] = sink;
+  global_manager.sinks_count++;
+
+  // Set up PipeWire ports + links atomically
+  sink_setup_pw_locked(sink);
 
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
+  return sink;
+}
+
+void sink_link(struct SinkCore *sink) {
+  // Now a no-op: linking is done atomically inside sink_create/sink_setup_pw_locked
+  (void)sink;
 }
 
 int sink_get_dB(struct SinkCore *sink) {
@@ -312,6 +341,13 @@ int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
   if (device == NULL || sink == NULL)
     return -1;
 
+  // Check if sink is already bridged to prevent duplicate routes (which multiplies the volume)
+  for (int i = 0; i < device->bridged_sinks_count; i++) {
+    if (device->bridged_sinks[i] == sink) {
+      return 0; // Already bridged, do nothing
+    }
+  }
+
   if (device->bridged_sinks_count >= MAX_ROUTES_PER_DEVICE)
     return -2;
 
@@ -324,63 +360,33 @@ int device_remove_bridged_sink(struct DeviceCore *device, struct SinkCore *sink)
   if (device == NULL || sink == NULL)
     return -1;
 
-  int found_idx = -1;
-  for (int i = 0; i < device->bridged_sinks_count; i++) {
+  int removed = 0;
+  for (int i = 0; i < device->bridged_sinks_count; ) {
     if (device->bridged_sinks[i] == sink) {
-      found_idx = i;
-      break;
+      for (int j = i; j < device->bridged_sinks_count - 1; j++) {
+        device->bridged_sinks[j] = device->bridged_sinks[j + 1];
+      }
+      device->bridged_sinks[device->bridged_sinks_count - 1] = NULL;
+      device->bridged_sinks_count--;
+      removed++;
+    } else {
+      i++;
     }
   }
 
-  if (found_idx == -1)
-    return -1; // Not found
-
-  // Shift elements to the left to remove
-  for (int i = found_idx; i < device->bridged_sinks_count - 1; i++) {
-    device->bridged_sinks[i] = device->bridged_sinks[i + 1];
-  }
-  device->bridged_sinks[device->bridged_sinks_count - 1] = NULL;
-  device->bridged_sinks_count--;
-
-  return 0;
+  return removed > 0 ? 0 : -1;
 }
 
 int sink_delete(struct SinkCore *sink) {
   if (sink == NULL)
     return -1;
 
-  // 1. Lock the threaded loop to safely remove resources from PipeWire graph
+  // 1. Tear down PipeWire resources atomically
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
-
-  // 2. Destroy links
-  if (sink->pw_core.link_l != NULL) {
-    pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_l);
-    sink->pw_core.link_l = NULL;
-  }
-  if (sink->pw_core.link_r != NULL) {
-    pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_r);
-    sink->pw_core.link_r = NULL;
-  }
-
-  // Wait for the server to confirm the link destroys before we proceed.
-  // Without this roundtrip, creating a new link to the same physical port
-  // immediately after returns EEXIST (-17).
-  pw_sync_roundtrip(global_manager.pw_manager.threaded_loop,
-                    global_manager.pw_manager.core);
-
-  // 3. Remove ports from filter
-  if (sink->pw_core.port_l != NULL) {
-    pw_filter_remove_port(sink->pw_core.port_l);
-    sink->pw_core.port_l = NULL;
-  }
-  if (sink->pw_core.port_r != NULL) {
-    pw_filter_remove_port(sink->pw_core.port_r);
-    sink->pw_core.port_r = NULL;
-  }
-
+  sink_teardown_pw_locked(sink);
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 
-  // 4. Remove sink reference from all device bridged_sinks lists
+  // 2. Remove sink reference from all device bridged_sinks lists
   for (int d = 0; d < global_manager.devices_count; d++) {
     struct DeviceCore *dev = global_manager.devices[d];
     if (dev != NULL) {
@@ -388,7 +394,7 @@ int sink_delete(struct SinkCore *sink) {
     }
   }
 
-  // 5. Remove sink from global sinks array
+  // 3. Remove sink from global sinks array
   int found_idx = -1;
   for (int i = 0; i < global_manager.sinks_count; i++) {
     if (global_manager.sinks[i] == sink) {
@@ -405,7 +411,7 @@ int sink_delete(struct SinkCore *sink) {
     global_manager.sinks_count--;
   }
 
-  // 6. Free memory
+  // 4. Free memory
   free(sink);
   return 0;
 }
@@ -436,6 +442,11 @@ int device_delete(struct DeviceCore *device) {
     pw_filter_remove_port(device->pw_core.port_r);
     device->pw_core.port_r = NULL;
   }
+
+  // Wait for the server to confirm ALL destroys (links + ports) before
+  // returning to avoid port ID reuse causing EEXIST on the next link creation.
+  pw_sync_roundtrip(global_manager.pw_manager.threaded_loop,
+                    global_manager.pw_manager.core);
 
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 

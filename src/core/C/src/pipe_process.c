@@ -183,9 +183,9 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     }
     sink->dB = amplitude_to_db(max_val);
 
-    if (do_debug) {
-      printf("  Sink %s Peak Volume: %d dB\n", sink->device_id, sink->dB);
-      fflush(stdout);
-    }
+    // if (do_debug) {
+    //   printf("  Sink %s Peak Volume: %d dB\n", sink->device_id, sink->dB);
+    //   fflush(stdout);
+    // }
   }
 }

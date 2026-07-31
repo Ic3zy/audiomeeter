@@ -10,6 +10,7 @@ cdef extern from "main.h":
 
 cdef extern from "types.h":
     struct SinkCore:
+        char name[32]
         char device_id[128]
         int dB
 
@@ -19,7 +20,7 @@ cdef extern from "types.h":
         int bridged_sinks_count
 
 cdef extern from "devices.h":
-    SinkCore *sink_create(const char *device_id)
+    SinkCore *sink_create(const char *name, const char *device_id)
     int sink_get_dB(SinkCore *sink)
     int sink_set_dB(SinkCore *sink, int dB)
     void sink_link(SinkCore *sink)
@@ -46,16 +47,22 @@ cdef class Sink:
     cdef SinkCore *_ptr
     cdef bint _alive
 
-    def __cinit__(self, str device_id):
+    def __cinit__(self, str name, str device_id):
+        cdef bytes b_name = name.encode("utf-8")
         cdef bytes b_id = device_id.encode("utf-8")
-        self._ptr = sink_create(b_id)
+        self._ptr = sink_create(b_name, b_id)
         if self._ptr == NULL:
             raise MemoryError("Failed to create Sink (limit exceeded)")
         self._alive = True
 
     def link(self):
+        # Atomic inside sink_create now, kept for backward compatibility
+        pass
+
+    @property
+    def name(self) -> str:
         self._check()
-        sink_link(self._ptr)
+        return self._ptr.name.decode("utf-8")
 
     @property
     def device_id(self) -> str:
@@ -82,7 +89,7 @@ cdef class Sink:
 
     def __repr__(self):
         if self._alive:
-            return f"<Sink '{self.device_id}' dB={self.dB}>"
+            return f"<Sink '{self.name}' -> '{self.device_id}' dB={self.dB}>"
         return "<Sink (deleted)>"
 
 

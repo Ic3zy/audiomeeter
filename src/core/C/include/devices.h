@@ -3,8 +3,9 @@
 
 /* --- SINK --- */
 
-// allocs a new sink core, aborst if no memory left
-struct SinkCore *sink_create(const char *device_id);
+// Creates or reassigns a sink slot. If a sink with the same 'name' already
+// exists, it will be atomically torn down and replaced with the new device_id.
+struct SinkCore *sink_create(const char *name, const char *device_id);
 
 // returns -1 on error or if sink pointer is null
 int sink_get_dB(struct SinkCore *sink);
