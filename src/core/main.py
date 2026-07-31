@@ -237,8 +237,6 @@ class AudioCore:
         device_obj = self.devices.get(device_name)
         device_obj.set_gain_from_db(db)
 
-
-
     def save_sink_device(self):
         devices = ["A1", "A2", "A3"]
 

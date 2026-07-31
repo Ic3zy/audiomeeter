@@ -6,7 +6,7 @@ import pyximport
 from setuptools import Extension
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-C_DIR = os.path.join(CURRENT_DIR, "C")
+C_DIR = os.path.join(CURRENT_DIR, "C", "audio_core")
 
 _libengine_path = os.path.join(C_DIR, "libengine.so")
 if os.path.exists(_libengine_path):
