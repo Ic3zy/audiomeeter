@@ -274,13 +274,15 @@ void device_init(struct DeviceCore *device) {
 
   device->eq.gain = 1.0f;
 
-  device->eq.bass = create_band(BASS_START_HZ, BASS_END_HZ, 0.0f, 48000.0f);
+  device->eq.bass =
+      create_band(RT_FILTER_LOW_SHELF, BASS_FREQ, 0.0f, 0.0f, 0.0f, 48000.0f);
 
-  device->eq.mid = create_band(MID_START_HZ, MID_END_HZ, 0.0f, 48000.0f);
+  device->eq.mid = create_band(RT_FILTER_PEAK, MID_FREQ, 0.0f,
+                               0.75f, // Q
+                               0.0f, 48000.0f);
 
-  device->eq.treble =
-      create_band(TREBLE_START_HZ, TREBLE_END_HZ, 0.0f, 48000.0f);
-
+  device->eq.treble = create_band(RT_FILTER_HIGH_SHELF, TREBLE_FREQ, 0.0f, 0.0f,
+                                  0.0f, 48000.0f);
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 
   char port_name_l[256];
@@ -388,11 +390,10 @@ int device_set_bass_gain(struct DeviceCore *device, float db) {
   if (band == NULL)
     return -1;
 
-  int r = update_band(band, BASS_START_HZ, BASS_END_HZ, db, 48000.0f);
+  int r = update_band(band, RT_FILTER_LOW_SHELF, BASS_FREQ, 0.0f, 0.0f, db,
+                      48000.0f);
 
-  printf("bass: %d\n", r);
-
-  return 0;
+  return r;
 }
 
 int device_set_mid_gain(struct DeviceCore *device, float db) {
@@ -403,9 +404,7 @@ int device_set_mid_gain(struct DeviceCore *device, float db) {
   if (band == NULL)
     return -1;
 
-  update_band(band, MID_START_HZ, MID_END_HZ, db, 48000.0f);
-
-  return 0;
+  return update_band(band, RT_FILTER_PEAK, MID_FREQ, 0.0f, 0.75f, db, 48000.0f);
 }
 
 int device_set_treble_gain(struct DeviceCore *device, float db) {
@@ -416,9 +415,8 @@ int device_set_treble_gain(struct DeviceCore *device, float db) {
   if (band == NULL)
     return -1;
 
-  update_band(band, TREBLE_START_HZ, TREBLE_END_HZ, db, 48000.0f);
-
-  return 0;
+  return update_band(band, RT_FILTER_HIGH_SHELF, TREBLE_FREQ, 0.0f, 0.0f, db,
+                      48000.0f);
 }
 
 int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
@@ -553,7 +551,14 @@ int device_delete(struct DeviceCore *device) {
     global_manager.devices_count--;
   }
 
-  // 5. Free memory
+  // 5. Free band structures and device memory
+  if (device->eq.bass)
+    destroy_band(device->eq.bass);
+  if (device->eq.mid)
+    destroy_band(device->eq.mid);
+  if (device->eq.treble)
+    destroy_band(device->eq.treble);
+
   free(device);
   return 0;
 }

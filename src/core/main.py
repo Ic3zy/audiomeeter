@@ -120,7 +120,7 @@ class AudioCore:
     def save_eq_callback(self, name, sl_number):
         for eq_type in ["Bass", "Mid", "Treble"]:
             ctx_name = f"s_{sl_number}_{eq_type}"
-            Ctx.add_callback(ctx_name, lambda n=name, cn=ctx_name, e=eq_type.lower(): self.set_eq_from_device_name(n, e, Ctx[cn]/10))
+            Ctx.add_callback(ctx_name, lambda n=name, cn=ctx_name, e=eq_type.lower(): self.set_eq_from_device_name(n, e, Ctx[cn] / 7))
 
 
     def initialize_core_devices(self):

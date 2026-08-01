@@ -1,5 +1,6 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Iinclude -g
+CFLAGS = -Wall -Wextra -Iinclude -g 
+CFLAGS += -O3 -msse4.2 -ffast-math
 
 PW_CFLAGS = $(shell pkg-config --cflags libpipewire-0.3)
 
