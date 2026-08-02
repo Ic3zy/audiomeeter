@@ -330,6 +330,8 @@ class AudioCore:
                 name = f"s_{i+1}_{device}"
                 Ctx.add_callback(name, lambda n=i+1, d=device: self.route_audio(n, d))
 
+            Ctx.add_callback(f"s_sl_{device}", lambda n=device: self.set_db(f"in_{n}", n, is_sink=False))
+
 
 class Engine:
     core = None
