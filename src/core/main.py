@@ -6,15 +6,7 @@ from base import Ctx
 import asyncio
 from . import engine
 
-# from .cython_core.audio_core import (
-#     init_audio_system,
-#     free_audio_system,
-#     AudioRecorder,
-#     Distributor
-# )
-
-
-DEBUG = False
+DEBUG = True
 
 class VirtualDevices:
     def __init__(self, f="audiomeeter_session.json"):
@@ -66,8 +58,8 @@ class VirtualDevices:
         self.devices = {
             "input_main": self.pulse.module_load('module-null-sink', 'sink_name=audiomeeter-input sink_properties="device.description=AudioMeeter_Input_(Main) audiomeeter.device_type=virtual"'),
             "input_aux": self.pulse.module_load('module-null-sink', 'sink_name=audiomeeter-aux-input sink_properties="device.description=AudioMeeter_AUX_Input audiomeeter.device_type=virtual"'),
-            # "out_b1": self.pulse.module_load('module-virtual-source', 'source_name=audiomeeter-out-b1 source_properties="device.description=AudioMeeter_Out_B1_(Virtual_Mic) audiomeeter.device_type=virtual"'),
-            # "out_b2": self.pulse.module_load('module-virtual-source', 'source_name=audiomeeter-out-b2 source_properties="device.description=AudioMeeter_Out_B2_(Virtual_Mic) audiomeeter.device_type=virtual"'),
+            "out_b1": self.pulse.module_load('module-null-sink', 'sink_name=audiomeeter-out-b1 media.class=Audio/Source/Virtual sink_properties="device.description=AudioMeeter_Out_B1_(Virtual_Mic) audiomeeter.device_type=virtual"'),
+            "out_b2": self.pulse.module_load('module-null-sink', 'sink_name=audiomeeter-out-b2 media.class=Audio/Source/Virtual sink_properties="device.description=AudioMeeter_Out_B2_(Virtual_Mic) audiomeeter.device_type=virtual"'),
         }
 
         json.dump(self.devices, open(self.f, "w"), indent=4)
@@ -100,7 +92,9 @@ class AudioCore:
         self.devices = {}
         
         self.save_sink_device()
+        self.save_source_device()
         self.initialize_core_devices()
+        self.initialize_default_sinks()
 
     def set_eq_from_device_name(self, device_name, eq_type, db):
         if device_name not in self.devices:
@@ -123,11 +117,19 @@ class AudioCore:
             Ctx.add_callback(ctx_name, lambda n=name, cn=ctx_name, e=eq_type.lower(): self.set_eq_from_device_name(n, e, Ctx[cn] / 7))
 
 
+    def initialize_default_sinks(self):
+        print(" [AudioCore] Scheduling default virtual sinks B1 and B2...")
+        loop = asyncio.get_event_loop()
+        # Delay sink creation to give PipeWire time to register
+        # the virtual source node ports (input_FL/input_FR)
+        loop.call_later(0.5, lambda: self.create_sink("audiomeeter-out-b1", "B1", "H_Out_B1_id"))
+        loop.call_later(1.0, lambda: self.create_sink("audiomeeter-out-b2", "B2", "H_Out_B2_id"))
+
     def initialize_core_devices(self):
         # We strip the '.monitor' suffix because in PipeWire the node name is just the sink name
         name_to_id = {
             "input_main": "audiomeeter-input",
-            "input_aux": "audiomeeter-aux-input"
+            "input_aux": "audiomeeter-aux-input",
         }
         
         for (name, id) in name_to_id.items():
@@ -180,23 +182,32 @@ class AudioCore:
         return None
         
     def route_audio(self, source_id, s_name):
-        sink_name = f"H_Out_{s_name}_id"
+        print(f" [AudioCore] route_audio: {source_id}, {s_name}")
 
         is_route = Ctx.get(f"s_{source_id}_{s_name}")
         if is_route is None:
             return
 
+        id_to_name = {
+            1: "in_1",
+            2: "in_2",
+            3: "in_3",
+            4: "input_main",
+            5: "input_aux",
+        }
+
         if isinstance(source_id, int):
-            v_d_name = "input_main" if source_id == 4 else "input_aux"
-            if source_id < 4:
-               return
+            v_d_name = id_to_name.get(source_id)
+            if v_d_name is None:
+                print(f" [AudioCore] route_audio: invalid source_id: {source_id}")
+                return
         else:
             return
 
         device_obj = self.devices.get(v_d_name)
         sink_obj = self.sinks.get(s_name)
 
-        print(f" [AudioCore] route_audio: {v_d_name} -> {s_name} (active: {is_route})")
+        print(f" [AudioCore] route_audio: {v_d_name} -> {s_name} (active: {is_route}), {sink_obj}")
 
         if is_route:
             if device_obj and sink_obj:
@@ -211,7 +222,34 @@ class AudioCore:
                 except Exception as e:
                     print(f" [AudioCore] route_audio unbridge error: {e}")
 
+    def create_source(self, device_id, device_name, source_name):
+        print(f" [AudioCore] create_source: {device_id}, {device_name}, {source_name}")
+        device_key = f"in_{device_name}"
+
+        if device_key in self.devices:
+            old_dev = self.devices.pop(device_key)
+            if device_key in self.watch_devices:
+                del self.watch_devices[device_key]
+            old_dev.delete()
+
+        if not device_id:
+            return
+
+        dev = engine.Device(device_id)
+        self.devices[device_key] = dev
+
+        loop = asyncio.get_event_loop()
+        loop.call_later(0.1, dev.link)
+
+        ctx_name = f"s_led_{device_name}"
+        self.add_watch_device(dev, device_key, ctx_name)
+
+        for sink_name in ["A1", "A2", "A3", "B1", "B2"]:
+            if Ctx.get(f"s_{device_name}_{sink_name}"):
+                self.route_audio(int(device_name), sink_name)
+
     def create_sink(self, device_id, device_name, sink_name):
+        device_name = str(device_name)
         print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
 
         if not device_id:
@@ -232,7 +270,11 @@ class AudioCore:
         sink = engine.Sink(device_name, device_id)
         self.sinks[device_name] = sink
 
-        ctx_name = f"s_led_{int(device_name[-1])+5}"
+        # A1=6, A2=7, A3=8, B1=9, B2=10
+        if device_name.startswith("B"):
+            ctx_name = f"s_led_{int(device_name[-1])+8}"
+        else:
+            ctx_name = f"s_led_{int(device_name[-1])+5}"
         self.add_watch_device(sink, device_name, ctx_name)
 
         # Re-evaluate all active route flags from Ctx (s_1_A1 .. s_5_A1) for this sink
@@ -256,19 +298,37 @@ class AudioCore:
             obj.set_gain_from_db(db)
 
     def save_sink_device(self):
-        devices = ["A1", "A2", "A3"]
+        devices = ["A1", "A2", "A3", "B1", "B2"]
 
         for device in devices:
             c_name = f"H_Out_{device}_id"
-            ids = int(device[-1]) + 5
+            # A1=6, A2=7, A3=8, B1=9, B2=10
+            if device.startswith("B"):
+                ids = int(device[-1]) + 8
+            else:
+                ids = int(device[-1]) + 5
             sl_name = f"s_sl_{ids}" 
-            Ctx.add_callback(c_name, lambda c_n=c_name, d=device: self.create_sink(Ctx[c_n], d, c_n))
+
+            # B1/B2 are fixed virtual mic sinks managed by initialize_default_sinks,
+            # don't register a device-swap callback for them.
+            if not device.startswith("B"):
+                Ctx.add_callback(c_name, lambda c_n=c_name, d=device: self.create_sink(Ctx[c_n], d, c_n))
 
             for i in range(5):
                 name = f"s_{i+1}_{device}"
                 Ctx.add_callback(name, lambda n=i+1, d=device: self.route_audio(n, d))
             
             Ctx.add_callback(sl_name, lambda n=device, i=ids: self.set_db(n, i))
+
+    def save_source_device(self):
+        #              1,2,3
+        for device in range(1, 4):
+            ctx_name = f"H_In_{device}"
+            Ctx.add_callback(ctx_name, lambda c_n=ctx_name, d=device: self.create_source(Ctx[c_n], d, c_n))
+
+            for i in range(5):
+                name = f"s_{i+1}_{device}"
+                Ctx.add_callback(name, lambda n=i+1, d=device: self.route_audio(n, d))
 
 
 class Engine:

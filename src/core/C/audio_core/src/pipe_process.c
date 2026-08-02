@@ -1,7 +1,6 @@
 #include <math.h>
 #include <pipewire/filter.h>
 #include <pipewire/pipewire.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "globals.h"
@@ -54,10 +53,10 @@ static inline void sink_apply_filter(struct SinkCore *sink, float *in_l,
   if (in_l == NULL && in_r == NULL)
     return;
 
-  if (sink->eq.gain != 0) {
+  if (sink->eq.gain != 1.0f) {
     for (uint32_t i = 0; i < n_samples; i++) {
-      in_l[i] = in_l[i] * sink->eq.gain;
-      in_r[i] = in_r[i] * sink->eq.gain;
+      if (in_l) in_l[i] = in_l[i] * sink->eq.gain;
+      if (in_r) in_r[i] = in_r[i] * sink->eq.gain;
     }
   }
 }

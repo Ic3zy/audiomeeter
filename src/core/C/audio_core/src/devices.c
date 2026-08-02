@@ -13,12 +13,19 @@
 
 struct link_proxy_data {
   struct spa_hook proxy_listener;
+  char info[256];
 };
 
 static void on_link_proxy_error(void *data, int seq, int res,
                                 const char *message) {
   (void)seq;
-  fprintf(stderr, "[pipe_process] link error (res=%d): %s\n", res, message);
+  struct link_proxy_data *pdata = data;
+  if (pdata && pdata->info[0] != '\0') {
+    fprintf(stderr, "[pipe_process] link error [%s] (res=%d): %s\n",
+            pdata->info, res, message);
+  } else {
+    fprintf(stderr, "[pipe_process] link error (res=%d): %s\n", res, message);
+  }
 }
 
 static void on_link_proxy_destroy(void *data) {
@@ -95,6 +102,9 @@ struct pw_link *create_pw_link(struct pw_core *core, const char *output_node,
 
   struct link_proxy_data *pdata = calloc(1, sizeof(*pdata));
   if (pdata != NULL) {
+    snprintf(pdata->info, sizeof(pdata->info), "%s:%s -> %s:%s",
+             output_node ? output_node : "*", output_port ? output_port : "*",
+             input_node ? input_node : "*", input_port ? input_port : "*");
     pw_proxy_add_listener(proxy, &pdata->proxy_listener, &link_proxy_events,
                           pdata);
   }
@@ -170,12 +180,22 @@ static void sink_setup_pw_locked(struct SinkCore *sink) {
                     global_manager.pw_manager.core);
 
   // Create links
+  // Virtual source sinks (audiomeeter-out-b*) use input_FL/input_FR port names,
+  // regular hardware sinks use playback_FL/playback_FR.
+  const char *dst_port_l = "playback_FL";
+  const char *dst_port_r = "playback_FR";
+
+  if (strstr(sink->device_id, "audiomeeter-out-b") != NULL) {
+    dst_port_l = "input_FL";
+    dst_port_r = "input_FR";
+  }
+
   sink->pw_core.link_l =
       create_pw_link(global_manager.pw_manager.core, ENGINE_NODE_NAME,
-                     port_name_l, sink->device_id, "playback_FL");
+                     port_name_l, sink->device_id, dst_port_l);
   sink->pw_core.link_r =
       create_pw_link(global_manager.pw_manager.core, ENGINE_NODE_NAME,
-                     port_name_r, sink->device_id, "playback_FR");
+                     port_name_r, sink->device_id, dst_port_r);
 }
 
 struct SinkCore *sink_create(const char *name, const char *device_id) {
@@ -195,6 +215,7 @@ struct SinkCore *sink_create(const char *name, const char *device_id) {
   strncpy(sink->name, name, sizeof(sink->name) - 1);
   strncpy(sink->device_id, device_id, sizeof(sink->device_id) - 1);
   sink->dB = 0;
+  sink->eq.gain = 1.0f; // Default gain is 1.0f (0 dB)
 
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 

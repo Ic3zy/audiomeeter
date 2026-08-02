@@ -1391,9 +1391,11 @@ class Hardware_panel(QWidget):
 
 # ---- select hardware out ----
 class AudioDeviceDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, is_outputs=True):
         super().__init__(parent)
-        self.setWindowTitle("Ses Cihazı Seçimi")
+        self.is_outputs = is_outputs
+        self.setWindowTitle("Select Device" if not self.is_outputs else "Select Input Device")
+
         self.setFixedSize(320, 280)
         
         self.selected_device = None
@@ -1444,8 +1446,10 @@ class AudioDeviceDialog(QDialog):
         """)
 
         layout = QVBoxLayout()
-        
-        self.label = QLabel("Select Output Device", self)
+
+        label_text = "Select Output Device" if self.is_outputs else "Select Input Device"
+
+        self.label = QLabel(label_text, self)
         layout.addWidget(self.label)
         
         self.device_list = QListWidget(self)
@@ -1467,10 +1471,15 @@ class AudioDeviceDialog(QDialog):
         
         self.setLayout(layout)
 
+    @property
+    def get_devices(self):
+        if self.is_outputs:
+            return DevicesManager.get_physical_sinks()
+        else:
+            return DevicesManager.get_physical_sources()
+
     def load_devices(self):
-        devices = DevicesManager.get_physical_sinks()
-        
-        for dev in devices:
+        for dev in self.get_devices:
             item = QListWidgetItem(dev.description)
             item.setData(Qt.UserRole, dev.index)
             self.device_list.addItem(item)
@@ -1479,12 +1488,12 @@ class AudioDeviceDialog(QDialog):
             self.device_list.setCurrentRow(0)
 
     def index_to_device_id(self, index):
-        for dev in DevicesManager.get_physical_sinks():
+        for dev in self.get_devices:
             if dev.index == index:
                 return dev.name
 
     def index_to_name(self, index):
-        for dev in DevicesManager.get_physical_sinks():
+        for dev in self.get_devices:
             if dev.index == index:
                 return dev.description
 
@@ -1743,7 +1752,46 @@ class MicsContainer(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         
         self.setMinimumSize(140, 80)
-    
+
+        Ctx.add_callback(f"H_In_{self.slider_number}", self.update)
+
+    def clear_other(self, name, id):
+        others = []
+        for _ in range(3):
+            ctx_name = f"H_In_{_+1}"
+            ctx_r_name = f"H_In_{_+1}_id"
+            if ctx_name in Ctx and Ctx[ctx_name] == name:
+                Ctx[ctx_name] = ""
+
+            if ctx_r_name in Ctx and Ctx[ctx_r_name] == id:
+                Ctx[ctx_r_name] = None
+
+    def on_widget_clicked(self):
+        popup = AudioDeviceDialog(self, is_outputs=False)
+        if popup.exec() == QDialog.Accepted:
+            device_name = popup.index_to_name(popup.selected_device)
+            device_id = popup.index_to_device_id(popup.selected_device)
+
+            ctx_name = f"H_In_{self.slider_number}"
+            ctx_r_name = f"H_In_{self.slider_number}_id"
+
+            self.clear_other(device_name, device_id)
+
+            if device_name in Ctx and Ctx[ctx_name] == device_name:
+                Ctx[ctx_name] = ""
+                Ctx[ctx_r_name] = None
+                return
+            
+            Ctx[ctx_r_name] = device_id
+            Ctx[ctx_name] = device_name
+        else:
+            print("\ncancel.\n")
+
+        self.update()
+
+    def mousePressEvent(self, event):
+        self.on_widget_clicked()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
@@ -1769,13 +1817,20 @@ class MicsContainer(QWidget):
         
         top_rect = QRect(w_rect.left() + padding_left, w_rect.top() + top_offset, content_width, 16)
         painter.drawText(top_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, top_text)
+
+        ctx_name = f"H_In_{self.slider_number}"
         
         bottom_font = QFont("Arial")
         bottom_font.setPixelSize(10)
         painter.setFont(bottom_font)
-        painter.setPen(QPen(QColor("#a2a2a2")))
-        
-        bottom_text = "Select Input Device"
+
+        if ctx_name in Ctx and Ctx[ctx_name]:
+            painter.setPen(QPen(QColor("#cbcbcb")))
+            bottom_text = Ctx[ctx_name]
+        else:
+            painter.setPen(QPen(QColor("#a2a2a2")))
+            bottom_text = "Select Input Device"
+            
         bottom_rect = QRect(w_rect.left() + padding_left, top_rect.bottom() + 2, content_width, 14)
         painter.drawText(bottom_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, bottom_text)
         
