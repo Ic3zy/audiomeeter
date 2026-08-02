@@ -151,19 +151,19 @@ class AudioCore:
         try:
             lasts = {}
             while True:
-                for (device_name, (device, ctx_dB_name)) in self.watch_devices.items():
-                    last_db = lasts.get(device_name, 0)
+                for (device_name, (device, ctx_dB_name)) in list(self.watch_devices.items()):
+                    last_db = lasts.get(device_name, None)
                     
                     try:
                         db = device.dB
                     except Exception:
                         continue
 
-                    if db != last_db:
+                    if last_db is None or db != last_db:
                         lasts[device_name] = db
                         Ctx[ctx_dB_name] = db
 
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.03)
         except Exception as e:
             print(f"dB_watchdog error: {e}")
 

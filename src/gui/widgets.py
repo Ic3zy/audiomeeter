@@ -578,8 +578,13 @@ class LEDVolumeMeter(QWidget):
         if styler_instance:
             styler_instance.set_style("volume_meter", self)
 
+    def db_to_percent(self, db):
+        if db is None:
+            return 0.0
+        return max(0.0, min(1.0, (db + 100) / 112))
+
     def setValue(self, val):
-        self.current_value = max(0.0, min(1.0, val))
+        self.current_value = self.db_to_percent(val)
         self.update()
 
     @Property(int)
@@ -767,6 +772,15 @@ class Slider_buttons_div(QWidget):
             self.led_vol_meter = LEDVolumeMeter()
 
             self.layout.addWidget(self.led_vol_meter)
+
+            def led_callback():
+                val = Ctx.get(f"s_led_{slider_number}")
+                if val is not None:
+                    self.led_vol_meter.setValue(val)
+
+            Ctx.add_callback(f"s_led_{slider_number}", led_callback)
+
+
 
         self.layout.addWidget(self.mic_slider)
         self.layout.addWidget(self.r_toggle, alignment=Qt.AlignmentFlag.AlignBottom)
