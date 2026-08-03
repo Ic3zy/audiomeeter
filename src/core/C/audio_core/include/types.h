@@ -24,6 +24,8 @@ struct Equalizer {
   struct rt_band *bass;
   struct rt_band *mid;
   struct rt_band *treble;
+
+  bool mono;
 };
 
 // output device

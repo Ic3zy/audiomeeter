@@ -44,6 +44,11 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
         in_l[i] = process_sample(device->eq.treble->state_left, in_l[i]);
         in_r[i] = process_sample(device->eq.treble->state_right, in_r[i]);
       }
+      if (device->eq.mono) {
+        float top = (in_l[i] + in_r[i]) * 0.5f;
+        in_r[i] = top;
+        in_l[i] = top;
+      }
     }
   }
 }
@@ -55,8 +60,10 @@ static inline void sink_apply_filter(struct SinkCore *sink, float *in_l,
 
   if (sink->eq.gain != 1.0f) {
     for (uint32_t i = 0; i < n_samples; i++) {
-      if (in_l) in_l[i] = in_l[i] * sink->eq.gain;
-      if (in_r) in_r[i] = in_r[i] * sink->eq.gain;
+      if (in_l)
+        in_l[i] = in_l[i] * sink->eq.gain;
+      if (in_r)
+        in_r[i] = in_r[i] * sink->eq.gain;
     }
   }
 }

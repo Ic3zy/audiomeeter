@@ -437,7 +437,15 @@ int device_set_treble_gain(struct DeviceCore *device, float db) {
     return -1;
 
   return update_band(band, RT_FILTER_HIGH_SHELF, TREBLE_FREQ, 0.0f, 0.0f, db,
-                      48000.0f);
+                     48000.0f);
+}
+
+int device_set_mono(struct DeviceCore *device, bool is_mono) {
+  if (device == NULL)
+    return -1;
+
+  device->eq.mono = is_mono;
+  return 0;
 }
 
 int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {

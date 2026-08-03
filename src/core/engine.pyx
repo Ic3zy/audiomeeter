@@ -2,6 +2,7 @@
 
 from libc.stdlib cimport free
 from libc.string cimport strncpy
+from libcpp cimport bool
 
 # ── C declarations ──────────────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ cdef extern from "devices.h":
     int device_set_bass_gain(DeviceCore *device, float db)
     int device_set_mid_gain(DeviceCore *device, float db)
     int device_set_treble_gain(DeviceCore *device, float db)
+    int device_set_mono(DeviceCore *device, bool is_mono)
     void device_link(DeviceCore *device)
     int device_delete(DeviceCore *device)
 
@@ -142,6 +144,10 @@ cdef class Device:
     def set_treble_gain(self, float db):
         self._check()
         return device_set_treble_gain(self._ptr, db)
+
+    def set_mono(self, bool is_mono):
+        self._check()
+        return device_set_mono(self._ptr, is_mono)
 
     def bridge(self, Sink sink not None):
         self._check()
