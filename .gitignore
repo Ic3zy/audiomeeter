@@ -8,3 +8,4 @@ build
 .vscode
 *.raw
 test2/
+test/
