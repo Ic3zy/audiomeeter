@@ -1,12 +1,25 @@
 import os, json, time, struct, pulsectl, math, concurrent.futures
 
+from evdev import ecodes
 from pulsectl import _pulsectl as c
 
 from base import Ctx
 import asyncio
 from . import engine
+from .consumer_listener import ConsumerListener
+from .devices import sink_name_to_consumer_device
 
 DEBUG = True
+
+
+def db_to_percent(db: float) -> float:
+    db = max(-60.0, min(12.0, db))
+    return ((db + 60.0) / 72.0) * 150.0
+
+
+def percent_to_db(percent: float) -> float:
+    percent = max(0.0, min(150.0, percent))
+    return (percent / 150.0) * 72.0 - 60.0
 
 
 class VirtualDevices:
@@ -103,6 +116,8 @@ class AudioCore:
 
         self.sinks = {}
         self.devices = {}
+
+        self.consumer_listeners = {}
 
         self.muted_devices = []
 
@@ -345,9 +360,70 @@ class AudioCore:
             if Ctx.get(f"s_{device_name}_{sink_name}"):
                 self.route_audio(int(device_name), sink_name)
 
+    def device_set_gain_from_listener(self, sink_name, slider_name, up=True):
+        sink = self.sinks.get(sink_name)
+        if sink is None:
+            return
+
+        ex_db = Ctx.get(slider_name)
+        if ex_db is None:
+            return
+
+        ex_percent = db_to_percent(ex_db)
+        ex_percent = max(0.0, min(150.0, ex_percent + (5.0 if up else -5.0)))
+
+        db = percent_to_db(ex_percent)
+
+        sink.set_gain_from_db(db)
+        Ctx[slider_name] = db
+
+    def listener_callback(self, event, sink_name, slider_name):
+        if event.type != ecodes.EV_KEY:
+            return
+
+        if event.value != 1:
+            return
+
+        if event.code == ecodes.KEY_VOLUMEUP:
+            print("Volume Up")
+            self.device_set_gain_from_listener(sink_name, slider_name, up=True)
+            return True
+
+        elif event.code == ecodes.KEY_VOLUMEDOWN:
+            print("Volume Down")
+            self.device_set_gain_from_listener(sink_name, slider_name, up=False)
+            return True
+
+        elif event.code == ecodes.KEY_MUTE:
+            # TODO: implement mute
+            return True
+
     def create_sink(self, device_id, device_name, sink_name):
         device_name = str(device_name)
         print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
+
+        listener = self.consumer_listeners.get(device_name)
+        if listener is not None:
+            del self.consumer_listeners[device_name]
+
+        listener = None
+        consumer = sink_name_to_consumer_device(device_id)
+        if consumer is None:
+            print(f" [AudioCore] create_sink: invalid consumer device: {sink_name}")
+        else:
+            listener = ConsumerListener(consumer)
+            if device_name.startswith("B"):
+                s_ctx_name = f"s_sl_{int(device_name[-1])+8}"
+            else:
+                s_ctx_name = f"s_sl_{int(device_name[-1])+5}"
+
+            listener.add_callback(
+                lambda e: self.listener_callback(e, device_name, s_ctx_name)
+            )
+
+            listener.start()
+
+        self.consumer_listeners[device_name] = listener
 
         if not device_id:
             if device_name in self.sinks:
@@ -372,6 +448,7 @@ class AudioCore:
             ctx_name = f"s_led_{int(device_name[-1])+8}"
         else:
             ctx_name = f"s_led_{int(device_name[-1])+5}"
+
         self.add_watch_device(sink, device_name, ctx_name)
 
         # Re-evaluate all active route flags from Ctx (s_1_A1 .. s_5_A1) for this sink

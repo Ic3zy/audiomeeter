@@ -1,4 +1,40 @@
-import pulsectl
+import pulsectl, evdev
+
+
+def sink_name_to_consumer_device(sink_name: str):
+    for sink in DevicesManager.get_physical_sinks():
+        if sink.name != sink_name:
+            continue
+
+        props = sink.raw.proplist
+
+        vendor = props.get("device.vendor.id")
+        product = props.get("device.product.id")
+
+        if vendor is None or product is None:
+            return None
+
+        vendor = int(vendor, 16)
+        product = int(product, 16)
+
+        for path in evdev.list_devices():
+            dev = evdev.InputDevice(path)
+
+            if dev.info.vendor != vendor:
+                continue
+
+            if dev.info.product != product:
+                continue
+
+            caps = dev.capabilities(verbose=False)
+            keys = caps.get(evdev.ecodes.EV_KEY, [])
+
+            if evdev.ecodes.KEY_VOLUMEUP in keys or evdev.ecodes.KEY_VOLUMEDOWN in keys:
+                return dev
+
+        return None
+
+    return None
 
 
 class PulseOutputDevice:
@@ -7,17 +43,20 @@ class PulseOutputDevice:
         self.index = sink_info.index
         self.name = sink_info.name
         self.description = sink_info.description
-        
+
         self.is_our_virtual = "audiomeeter.device_type" in sink_info.proplist
-        
+
         self.is_standard_virtual = sink_info.driver in [
-            "module-null-sink.c", 
-            "module-virtual-sink.c", 
+            "module-null-sink.c",
+            "module-virtual-sink.c",
             "module-remap-sink.c",
-            "module-combine-sink.c"
+            "module-combine-sink.c",
         ]
-        
+
         self.physical = not self.is_our_virtual and not self.is_standard_virtual
+
+        self._consumer_device = None
+        self._consumer_searched = False
 
     @property
     def is_physical(self) -> bool:
@@ -27,8 +66,51 @@ class PulseOutputDevice:
     def is_virtual(self) -> bool:
         return self.is_our_virtual or self.is_standard_virtual
 
+    @property
+    def consumer_device(self):
+        if self._consumer_searched:
+            return self._consumer_device
+
+        self._consumer_searched = True
+
+        if not self.is_physical:
+            return None
+
+        props = self.raw.proplist
+
+        vendor = props.get("device.vendor.id")
+        product = props.get("device.product.id")
+
+        if vendor is None or product is None:
+            return None
+
+        vendor = int(vendor, 16)
+        product = int(product, 16)
+
+        for path in evdev.list_devices():
+            dev = evdev.InputDevice(path)
+
+            if dev.info.vendor != vendor:
+                continue
+
+            if dev.info.product != product:
+                continue
+
+            caps = dev.capabilities(verbose=False)
+            keys = caps.get(evdev.ecodes.EV_KEY, [])
+
+            if evdev.ecodes.KEY_VOLUMEUP in keys or evdev.ecodes.KEY_VOLUMEDOWN in keys:
+                self._consumer_device = dev
+                return dev
+
+        return None
+
     def __repr__(self):
-        return f"<PulseOutputDevice [Index: {self.index}] Desc: {self.description} (Name: {self.name}, Physical: {self.is_physical})>"
+        return (
+            f"<PulseOutputDevice [Index: {self.index}] "
+            f"Desc: {self.description} "
+            f"(Name: {self.name}, Physical: {self.is_physical})>"
+        )
 
 
 class PulseInputDevice:
@@ -37,18 +119,22 @@ class PulseInputDevice:
         self.index = source_info.index
         self.name = source_info.name
         self.description = source_info.description
-        
+
         self.is_our_virtual = "audiomeeter.device_type" in source_info.proplist
-        
+
         self.is_standard_virtual = source_info.driver in [
-            "module-virtual-source.c", 
+            "module-virtual-source.c",
             "module-remap-source.c",
-            "module-pipe-source.c"
+            "module-pipe-source.c",
         ]
-        
+
         self.is_monitor = source_info.monitor_of_sink != 4294967295
-        
-        self.physical = not self.is_our_virtual and not self.is_standard_virtual and not self.is_monitor
+
+        self.physical = (
+            not self.is_our_virtual
+            and not self.is_standard_virtual
+            and not self.is_monitor
+        )
 
     @property
     def is_physical(self) -> bool:
@@ -94,7 +180,44 @@ class PulseAudioManager:
 DevicesManager = PulseAudioManager("AudiomeeterCore")
 
 
+# DEBUG
+async def test():
+    sink = DevicesManager.get_physical_sinks()[1]
+    print(sink.consumer_device)
+
+    from evdev import ecodes
+
+    def callback(event):
+        if event.type != ecodes.EV_KEY:
+            return
+
+        if event.value != 1:
+            return
+
+        print(ecodes.KEY[event.code])
+
+        if event.code == ecodes.KEY_VOLUMEUP:
+            print("Volume Up")
+            return True
+
+        elif event.code == ecodes.KEY_VOLUMEDOWN:
+            print("Volume Down")
+            return True
+
+        elif event.code == ecodes.KEY_MUTE:
+            print("Mute")
+            return True
+
+    listener = ConsumerListener(sink.consumer_device)
+    listener.add_callback(callback)
+    listener.start()
+    while True:
+        await asyncio.sleep(0.1)
+
 
 # debug
 if __name__ == "__main__":
-    print(DevicesManager.get_physical_sources())
+    import asyncio
+    from consumer_listener import ConsumerListener
+
+    asyncio.run(test())
