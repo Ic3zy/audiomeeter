@@ -2,3 +2,6 @@
 [submodule "src/core/C/rt_biquad"]
 	path = src/core/C/rt_biquad
 	url = https://github.com/Ic3zy/rt-biquad-filter
+[submodule "src/core/C/wayland-volume-osd"]
+	path = src/core/C/wayland-volume-osd
+	url = https://github.com/Ic3zy/wayland-volume-osd

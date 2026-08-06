@@ -5,7 +5,7 @@ from pulsectl import _pulsectl as c
 
 from base import Ctx
 import asyncio
-from . import engine
+from . import engine, wvosd
 from .consumer_listener import ConsumerListener
 from .devices import sink_name_to_consumer_device
 
@@ -14,12 +14,22 @@ DEBUG = True
 
 def db_to_percent(db: float) -> float:
     db = max(-60.0, min(12.0, db))
-    return ((db + 60.0) / 72.0) * 150.0
+    if db <= 0.0:
+        # Range [-60 dB, 0 dB] -> [0%, 100%]
+        return (db + 60.0) * (100.0 / 60.0)
+    else:
+        # Range [0 dB, +12 dB] -> [100%, 150%]
+        return 100.0 + (db * (50.0 / 12.0))
 
 
 def percent_to_db(percent: float) -> float:
     percent = max(0.0, min(150.0, percent))
-    return (percent / 150.0) * 72.0 - 60.0
+    if percent <= 100.0:
+        # Range [0%, 100%] -> [-60 dB, 0 dB]
+        return (percent * (60.0 / 100.0)) - 60.0
+    else:
+        # Range [100%, 150%] -> [0 dB, +12 dB]
+        return (percent - 100.0) * (12.0 / 50.0)
 
 
 class VirtualDevices:
@@ -111,6 +121,7 @@ class VirtualDevices:
 class AudioCore:
     def __init__(self):
         engine.init()
+        self.VolumeOSD = wvosd.VolumeOSD()
         self.archived_routes = []
         self.watch_devices = {}
 
@@ -371,6 +382,11 @@ class AudioCore:
 
         ex_percent = db_to_percent(ex_db)
         ex_percent = max(0.0, min(150.0, ex_percent + (5.0 if up else -5.0)))
+
+        t1 = time.perf_counter()
+        self.VolumeOSD.show_volume(ex_percent, False)
+        t2 = time.perf_counter()
+        print(f"osd show: {t2-t1}")
 
         db = percent_to_db(ex_percent)
 
