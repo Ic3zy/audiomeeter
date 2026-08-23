@@ -146,6 +146,18 @@ static void sink_teardown_pw_locked(struct SinkCore *sink) {
                     global_manager.pw_manager.core);
 }
 
+static const char *get_engine_node_id_str(char *buf, size_t size) {
+  uint32_t node_id = SPA_ID_INVALID;
+  if (global_manager.filter != NULL) {
+    node_id = pw_filter_get_node_id(global_manager.filter);
+  }
+  if (node_id != SPA_ID_INVALID) {
+    snprintf(buf, size, "%u", node_id);
+    return buf;
+  }
+  return ENGINE_NODE_NAME;
+}
+
 // Internal: create PipeWire ports + links for a sink inside an already-held
 // lock, then sync roundtrip to ensure ports are registered before linking.
 static void sink_setup_pw_locked(struct SinkCore *sink) {
@@ -190,11 +202,15 @@ static void sink_setup_pw_locked(struct SinkCore *sink) {
     dst_port_r = "input_FR";
   }
 
+  char engine_node[64];
+  const char *engine_target =
+      get_engine_node_id_str(engine_node, sizeof(engine_node));
+
   sink->pw_core.link_l =
-      create_pw_link(global_manager.pw_manager.core, ENGINE_NODE_NAME,
+      create_pw_link(global_manager.pw_manager.core, engine_target,
                      port_name_l, sink->device_id, dst_port_l);
   sink->pw_core.link_r =
-      create_pw_link(global_manager.pw_manager.core, ENGINE_NODE_NAME,
+      create_pw_link(global_manager.pw_manager.core, engine_target,
                      port_name_r, sink->device_id, dst_port_r);
 }
 
@@ -331,6 +347,10 @@ void device_init(struct DeviceCore *device) {
     abort();
   }
 
+  // Roundtrip: wait for server to register the ports before linking
+  pw_sync_roundtrip(global_manager.pw_manager.threaded_loop,
+                    global_manager.pw_manager.core);
+
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 }
 
@@ -339,6 +359,15 @@ void device_link(struct DeviceCore *device) {
     abort();
 
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
+
+  if (device->pw_core.link_l != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_l);
+    device->pw_core.link_l = NULL;
+  }
+  if (device->pw_core.link_r != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_r);
+    device->pw_core.link_r = NULL;
+  }
 
   char port_name_l[256];
   char port_name_r[256];
@@ -363,13 +392,62 @@ void device_link(struct DeviceCore *device) {
     snprintf(src_port_r, sizeof(src_port_r), "%s_FR", prefix);
   }
 
+  char engine_node[64];
+  const char *engine_target =
+      get_engine_node_id_str(engine_node, sizeof(engine_node));
+
   device->pw_core.link_l =
       create_pw_link(global_manager.pw_manager.core, device->device_id,
-                     src_port_l, ENGINE_NODE_NAME, port_name_l);
+                     src_port_l, engine_target, port_name_l);
+
+  if (device->pw_core.link_l == NULL) {
+    char alt_port[64];
+    snprintf(alt_port, sizeof(alt_port), "%s_MONO", prefix);
+    device->pw_core.link_l =
+        create_pw_link(global_manager.pw_manager.core, device->device_id,
+                       alt_port, engine_target, port_name_l);
+  }
+  if (device->pw_core.link_l == NULL) {
+    char alt_port[64];
+    snprintf(alt_port, sizeof(alt_port), "%s_1", prefix);
+    device->pw_core.link_l =
+        create_pw_link(global_manager.pw_manager.core, device->device_id,
+                       alt_port, engine_target, port_name_l);
+  }
+  if (device->pw_core.link_l == NULL) {
+    device->pw_core.link_l =
+        create_pw_link(global_manager.pw_manager.core, device->device_id,
+                       NULL, engine_target, port_name_l);
+  }
 
   device->pw_core.link_r =
       create_pw_link(global_manager.pw_manager.core, device->device_id,
-                     src_port_r, ENGINE_NODE_NAME, port_name_r);
+                     src_port_r, engine_target, port_name_r);
+
+  if (device->pw_core.link_r == NULL && src_port_l[0] != '\0') {
+    device->pw_core.link_r =
+        create_pw_link(global_manager.pw_manager.core, device->device_id,
+                       src_port_l, engine_target, port_name_r);
+  }
+  if (device->pw_core.link_r == NULL) {
+    char alt_port[64];
+    snprintf(alt_port, sizeof(alt_port), "%s_MONO", prefix);
+    device->pw_core.link_r =
+        create_pw_link(global_manager.pw_manager.core, device->device_id,
+                       alt_port, engine_target, port_name_r);
+  }
+  if (device->pw_core.link_r == NULL) {
+    char alt_port[64];
+    snprintf(alt_port, sizeof(alt_port), "%s_2", prefix);
+    device->pw_core.link_r =
+        create_pw_link(global_manager.pw_manager.core, device->device_id,
+                       alt_port, engine_target, port_name_r);
+  }
+  if (device->pw_core.link_r == NULL) {
+    device->pw_core.link_r =
+        create_pw_link(global_manager.pw_manager.core, device->device_id,
+                       NULL, engine_target, port_name_r);
+  }
 
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 }

@@ -15,21 +15,25 @@ DEBUG = True
 def db_to_percent(db: float) -> float:
     db = max(-60.0, min(12.0, db))
     if db <= 0.0:
-        # Range [-60 dB, 0 dB] -> [0%, 100%]
-        return (db + 60.0) * (100.0 / 60.0)
+        # Non-linear cubic perceptual curve: [-60 dB, 0 dB] -> [0%, 100%]
+        norm = (db + 60.0) / 60.0
+        return 100.0 * (norm**3)
     else:
-        # Range [0 dB, +12 dB] -> [100%, 150%]
-        return 100.0 + (db * (50.0 / 12.0))
+        # Non-linear expansion curve: [0 dB, +12 dB] -> [100%, 150%]
+        norm = db / 12.0
+        return 100.0 + 50.0 * (norm**0.75)
 
 
 def percent_to_db(percent: float) -> float:
     percent = max(0.0, min(150.0, percent))
     if percent <= 100.0:
-        # Range [0%, 100%] -> [-60 dB, 0 dB]
-        return (percent * (60.0 / 100.0)) - 60.0
+        # Inverse cubic perceptual curve: [0%, 100%] -> [-60 dB, 0 dB]
+        norm = percent / 100.0
+        return 60.0 * (norm ** (1.0 / 3.0)) - 60.0
     else:
-        # Range [100%, 150%] -> [0 dB, +12 dB]
-        return (percent - 100.0) * (12.0 / 50.0)
+        # Inverse expansion curve: [100%, 150%] -> [0 dB, +12 dB]
+        norm = (percent - 100.0) / 50.0
+        return 12.0 * (norm ** (1.0 / 0.75))
 
 
 class VirtualDevices:
@@ -205,7 +209,7 @@ class AudioCore:
                 f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False)
             )
 
-            self.add_watch_device(dev, name, name)
+            self.add_watch_device(dev, name, f"s_led_{ids}")
 
     async def dB_watchdog(self):
         try:
@@ -414,12 +418,10 @@ class AudioCore:
             # TODO: implement mute
             return True
 
-    def create_sink(self, device_id, device_name, sink_name):
-        device_name = str(device_name)
-        print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
-
+    def consumer_listener_creator(self, device_id, device_name, sink_name):
         listener = self.consumer_listeners.get(device_name)
         if listener is not None:
+            listener.stop()
             del self.consumer_listeners[device_name]
 
         listener = None
@@ -440,6 +442,12 @@ class AudioCore:
             listener.start()
 
         self.consumer_listeners[device_name] = listener
+
+    def create_sink(self, device_id, device_name, sink_name):
+        device_name = str(device_name)
+        print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
+
+        self.consumer_listener_creator(device_id, device_name, sink_name)
 
         if not device_id:
             if device_name in self.sinks:
@@ -514,17 +522,13 @@ class AudioCore:
             Ctx.add_callback(sl_name, lambda n=device, i=ids: self.set_db(n, i))
 
     def save_source_device(self):
-        #              1,2,3
+        # 1,2,3
         for device in range(1, 4):
-            ctx_name = f"H_In_{device}"
+            ctx_name = f"H_In_{device}_id"
             Ctx.add_callback(
                 ctx_name,
-                lambda c_n=ctx_name, d=device: self.create_source(Ctx[c_n], d, c_n),
+                lambda c_n=ctx_name, d=device: self.create_source(Ctx.get(c_n), d, c_n),
             )
-
-            for i in range(5):
-                name = f"s_{i+1}_{device}"
-                Ctx.add_callback(name, lambda n=i + 1, d=device: self.route_audio(n, d))
 
             Ctx.add_callback(
                 f"s_sl_{device}",
