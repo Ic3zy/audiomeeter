@@ -209,7 +209,7 @@ class AudioCore:
                 f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False)
             )
 
-            self.add_watch_device(dev, name, f"s_led_{ids}")
+            self.add_watch_device(dev, name, name)
 
     async def dB_watchdog(self):
         try:
@@ -447,7 +447,13 @@ class AudioCore:
         device_name = str(device_name)
         print(f" [AudioCore] create_sink: {device_id}, {device_name}, {sink_name}")
 
-        self.consumer_listener_creator(device_id, device_name, sink_name)
+        try:
+            self.consumer_listener_creator(device_id, device_name, sink_name)
+        except Exception as e:
+            if device_name in self.consumer_listeners:
+                del self.consumer_listeners[device_name]
+
+            print(f" [AudioCore] create_sink[consumer listener]: error: {e}")
 
         if not device_id:
             if device_name in self.sinks:

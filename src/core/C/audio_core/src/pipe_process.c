@@ -200,8 +200,7 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     float max_val = 0.0f;
 
     if (in_l) {
-      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
-           step_cnt++, i += step) {
+      for (uint32_t i = 0; i < n_samples; i++) {
         float val = fabsf(in_l[i]);
         if (val > max_val)
           max_val = val;
@@ -209,8 +208,7 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     }
 
     if (in_r) {
-      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
-           step_cnt++, i += step) {
+      for (uint32_t i = 0; i < n_samples; i++) {
         float val = fabsf(in_r[i]);
         if (val > max_val)
           max_val = val;
@@ -231,16 +229,14 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     sink_apply_filter(sink, out_l, out_r, n_samples);
 
     if (out_l) {
-      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
-           step_cnt++, i += step) {
+      for (uint32_t i = 0; i < n_samples; i++) {
         float val = fabsf(out_l[i]);
         if (val > max_val)
           max_val = val;
       }
     }
     if (out_r) {
-      for (uint32_t step_cnt = 0, i = 0; step_cnt < max_steps && i < n_samples;
-           step_cnt++, i += step) {
+      for (uint32_t i = 0; i < n_samples; i++) {
         float val = fabsf(out_r[i]);
         if (val > max_val)
           max_val = val;
