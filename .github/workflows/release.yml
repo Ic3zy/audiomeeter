@@ -3,7 +3,7 @@ name: Build and Publish Release Package
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
 
 permissions:
   contents: write
@@ -12,8 +12,6 @@ jobs:
   build-release:
     name: Build Arch Linux Package (.pkg.tar.zst)
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
 
     steps:
       - name: Checkout repository
@@ -21,42 +19,39 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Arch build dependencies
+      - name: Build package inside Arch Linux container
         run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed \
-            base-devel \
-            git \
-            gcc \
-            make \
-            pkgconf \
-            pipewire \
-            wayland \
-            wayland-protocols \
-            cairo \
-            python \
-            cython \
-            python-setuptools \
-            pyside6 \
-            python-pulsectl \
-            python-psutil \
-            python-evdev \
-            python-qasync \
-            nodejs
+          docker run --rm -v "$PWD":/workspace -w /workspace archlinux:latest /bin/bash -c "
+            pacman -Syu --noconfirm && \
+            pacman -S --noconfirm --needed \
+              base-devel \
+              git \
+              gcc \
+              make \
+              pkgconf \
+              pipewire \
+              wayland \
+              wayland-protocols \
+              cairo \
+              python \
+              cython \
+              python-setuptools \
+              pyside6 \
+              python-pulsectl \
+              python-psutil \
+              python-evdev \
+              python-qasync && \
+            chown -R nobody:nobody /workspace && \
+            chmod +x /workspace/packaging/build_release.sh && \
+            su nobody -s /bin/bash -c '/workspace/packaging/build_release.sh' && \
+            chmod -R 755 /workspace/packaging/
+          "
 
-      - name: Set workspace ownership for makepkg
-        run: |
-          chown -R nobody:nobody .
-
-      - name: Build binary package with makepkg
-        run: |
-          chmod +x packaging/build_release.sh
-          su nobody -s /bin/bash -c "./packaging/build_release.sh"
-          chmod -R 755 packaging/
-
-      - name: Upload Package Asset to GitHub Release
+      - name: Upload Package Asset to GitHub Release Tag
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ github.ref_name }}
           files: packaging/*.pkg.tar.zst
           generate_release_notes: true
         env:
