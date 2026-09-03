@@ -67,7 +67,7 @@ jobs:
             CHANGES="- Initial release build and stability improvements."
           fi
 
-          cat << EOF > release_body.md
+          cat << EOF > ${{ runner.temp }}/release_body.md
           # AudioMeeter ${TAG}
 
           A high-performance, low-latency virtual audio mixer for Linux built natively on PipeWire.
@@ -101,7 +101,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ github.ref_name }}
-          body_path: release_body.md
+          body_path: ${{ runner.temp }}/release_body.md
           files: packaging/*.pkg.tar.zst
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
