@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - name: Build package inside Arch Linux container
         run: |
@@ -46,16 +47,61 @@ jobs:
             useradd -m builder && \
             chown -R builder:builder /workspace && \
             chmod +x /workspace/packaging/build_release.sh && \
-            su builder -c '/workspace/packaging/build_release.sh' && \
+            su builder -c "/workspace/packaging/build_release.sh '${{ github.ref_name }}'" && \
             chmod -R 777 /workspace
           "
+
+      - name: Generate Release Notes & Changelog
+        run: |
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+          
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log --oneline --no-merges ${PREV_TAG}..${TAG} | sed 's/^[a-f0-9]* /- /')
+          else
+            CHANGES=$(git log --oneline --no-merges -n 15 | sed 's/^[a-f0-9]* /- /')
+          fi
+
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- Initial release build and stability improvements."
+          fi
+
+          cat << EOF > release_body.md
+          # AudioMeeter ${TAG}
+
+          A high-performance, low-latency virtual audio mixer for Linux built natively on PipeWire.
+
+          ## ⚡ Quick One-Line Installation (Arch Linux / Manjaro / EndeavourOS)
+
+          Copy and paste this single command into your terminal to automatically download, install, and clean up the package:
+
+          \`\`\`bash
+          curl -sSLO https://github.com/${REPO}/releases/download/${TAG}/audiomeeter-${TAG}.pkg.tar.zst && sudo pacman -U --noconfirm audiomeeter-${TAG}.pkg.tar.zst && rm -f audiomeeter-${TAG}.pkg.tar.zst
+          \`\`\`
+
+          ---
+
+          ## 📝 What's Changed in this Release
+
+          ${CHANGES}
+
+          ---
+
+          ## 💡 Key Features
+          - **PipeWire Native C Core**: Real-time SIMD SSE4.2 audio routing engine (\`libengine.so\`).
+          - **Matrix Audio Routing**: 3 Hardware Inputs & 2 Virtual Inputs to 3 Hardware Outputs & 2 Virtual Sinks.
+          - **Dynamic Device Hot-Swapping**: Switch microphones/headphones without audio drops or PipeWire crashes.
+          - **Parametric EQ & Mono Control**: 3-band Biquad filters (Bass, Mid, Treble) & Mono toggles per input.
+          - **Wayland OSD Overlay**: Hardware-accelerated Volume OSD rendered via \`zwlr_layer_shell_v1\` (\`libosd.so\`).
+          EOF
 
       - name: Upload Package Asset to GitHub Release Tag
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ github.ref_name }}
+          body_path: release_body.md
           files: packaging/*.pkg.tar.zst
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
