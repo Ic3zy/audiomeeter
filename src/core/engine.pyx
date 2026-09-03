@@ -28,7 +28,7 @@ cdef extern from "devices.h":
     void sink_link(SinkCore *sink)
     int sink_delete(SinkCore *sink)
 
-    DeviceCore *device_create(const char *device_id)
+    DeviceCore *device_create(const char *name, const char *device_id)
     int device_get_dB(DeviceCore *device)
     int device_set_dB(DeviceCore *device, int dB)
     int device_set_gain_from_db(DeviceCore *device, float db)
@@ -37,6 +37,8 @@ cdef extern from "devices.h":
     int device_set_treble_gain(DeviceCore *device, float db)
     int device_set_mono(DeviceCore *device, bool is_mono)
     void device_link(DeviceCore *device)
+    void device_unlink(DeviceCore *device)
+    int device_reassign(DeviceCore *device, const char *new_device_id)
     int device_delete(DeviceCore *device)
 
     int device_set_bridged_sink(DeviceCore *device, SinkCore *sink)
@@ -108,9 +110,10 @@ cdef class Device:
     cdef DeviceCore *_ptr
     cdef bint _alive
 
-    def __cinit__(self, str device_id):
+    def __cinit__(self, str name, str device_id):
+        cdef bytes b_name = name.encode("utf-8")
         cdef bytes b_id = device_id.encode("utf-8")
-        self._ptr = device_create(b_id)
+        self._ptr = device_create(b_name, b_id)
         if self._ptr == NULL:
             raise MemoryError("Failed to create Device (limit exceeded)")
         self._alive = True
@@ -118,6 +121,18 @@ cdef class Device:
     def link(self):
         self._check()
         device_link(self._ptr)
+
+    def unlink(self):
+        self._check()
+        device_unlink(self._ptr)
+
+    def reassign(self, str new_device_id):
+        """Change the hardware device without destroying ports."""
+        self._check()
+        cdef bytes b_id = new_device_id.encode("utf-8")
+        cdef int res = device_reassign(self._ptr, b_id)
+        if res < 0:
+            raise RuntimeError("Failed to reassign device")
 
     @property
     def device_id(self) -> str:

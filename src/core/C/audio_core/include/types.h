@@ -46,6 +46,7 @@ struct DeviceCore {
   struct SinkCore *bridged_sinks[MAX_ROUTES_PER_DEVICE];
   int bridged_sinks_count;
 
+  char name[32];
   char device_id[MAX_DEVICE_ID];
   int dB;
   int is_main;

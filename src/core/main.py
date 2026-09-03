@@ -196,7 +196,7 @@ class AudioCore:
 
         for name, id in name_to_id.items():
             print(f" [AudioCore] initialize_core_devices: {name}, {id}")
-            dev = engine.Device(id)
+            dev = engine.Device(name, id)
             self.devices[name] = dev
 
             # Allow PipeWire loop to register the ports before linking
@@ -353,23 +353,37 @@ class AudioCore:
         print(f" [AudioCore] create_source: {device_id}, {device_name}, {source_name}")
         device_key = f"in_{device_name}"
 
-        if device_key in self.devices:
-            old_dev = self.devices.pop(device_key)
-            if device_key in self.watch_devices:
-                del self.watch_devices[device_key]
-            old_dev.delete()
+        existing_dev = self.devices.get(device_key)
 
+        # Case 1: Clearing the slot (no device selected) — only unlink, keep ports
         if not device_id:
+            if existing_dev is not None:
+                existing_dev.unlink()
             return
 
-        dev = engine.Device(device_id)
+        # Case 2: Slot already has a device → reassign (reuse ports, only change links)
+        if existing_dev is not None:
+            existing_dev.reassign(device_id)
+            loop = asyncio.get_event_loop()
+            loop.call_later(0.1, existing_dev.link)
+
+            ids = int(device_name)
+            self.set_db(device_key, ids, is_sink=False)
+            return
+
+        # Case 3: First time assigning a device to this slot → create new
+        dev = engine.Device(device_key, device_id)
         self.devices[device_key] = dev
 
         loop = asyncio.get_event_loop()
         loop.call_later(0.1, dev.link)
 
-        ctx_name = f"s_led_{device_name}"
+        ids = int(device_name)
+        ctx_name = f"s_led_{ids}"
         self.add_watch_device(dev, device_key, ctx_name)
+
+        # Apply current slot volume (dB) from Ctx to the new source
+        self.set_db(device_key, ids, is_sink=False)
 
         for sink_name in ["A1", "A2", "A3", "B1", "B2"]:
             if Ctx.get(f"s_{device_name}_{sink_name}"):
@@ -475,11 +489,16 @@ class AudioCore:
 
         # A1=6, A2=7, A3=8, B1=9, B2=10
         if device_name.startswith("B"):
-            ctx_name = f"s_led_{int(device_name[-1])+8}"
+            ids = int(device_name[-1]) + 8
         else:
-            ctx_name = f"s_led_{int(device_name[-1])+5}"
+            ids = int(device_name[-1]) + 5
+
+        ctx_name = f"s_led_{ids}"
 
         self.add_watch_device(sink, device_name, ctx_name)
+
+        # Apply current slot volume (dB) from Ctx to the new sink
+        self.set_db(device_name, ids, is_sink=True)
 
         # Re-evaluate all active route flags from Ctx (s_1_A1 .. s_5_A1) for this sink
         for i in range(1, 6):

@@ -17,7 +17,7 @@ int sink_set_gain_from_db(struct SinkCore *sink, float db);
 /* --- DEVICES --- */
 
 // creates device core, will abort if calloc fails
-struct DeviceCore *device_create(const char *device_id);
+struct DeviceCore *device_create(const char *name, const char *device_id);
 
 void device_init(struct DeviceCore *device);
 
@@ -41,6 +41,11 @@ int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink);
 
 void sink_link(struct SinkCore *sink);
 void device_link(struct DeviceCore *device);
+void device_unlink(struct DeviceCore *device);
+
+// Reassigns device_id on an existing DeviceCore, tearing down old links
+// and creating new ones. Ports are NOT removed/recreated.
+int device_reassign(struct DeviceCore *device, const char *new_device_id);
 
 int sink_delete(struct SinkCore *sink);
 int device_delete(struct DeviceCore *device);

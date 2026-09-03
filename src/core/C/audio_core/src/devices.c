@@ -176,10 +176,12 @@ static void sink_setup_pw_locked(struct SinkCore *sink) {
 
   sink->pw_core.port_l =
       pw_filter_add_port(global_manager.filter, PW_DIRECTION_OUTPUT,
-                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_l, NULL, 0);
+                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_l,
+                         global_manager.default_port_params, 1);
   sink->pw_core.port_r =
       pw_filter_add_port(global_manager.filter, PW_DIRECTION_OUTPUT,
-                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_r, NULL, 0);
+                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_r,
+                         global_manager.default_port_params, 1);
 
   if (sink->pw_core.port_l == NULL || sink->pw_core.port_r == NULL) {
     fprintf(stderr, "[AudioMeeter] FATAL: failed to add ports for sink %s\n",
@@ -281,14 +283,15 @@ int sink_set_gain_from_db(struct SinkCore *sink, float db) {
 // END SINK CLASS
 
 // DEVICE CLASS
-struct DeviceCore *device_create(const char *device_id) {
-  if (device_id == NULL)
+struct DeviceCore *device_create(const char *name, const char *device_id) {
+  if (name == NULL || device_id == NULL)
     return NULL;
 
   struct DeviceCore *device = calloc(1, sizeof(*device));
   if (device == NULL)
     abort();
 
+  strncpy(device->name, name, sizeof(device->name) - 1);
   strncpy(device->device_id, device_id, sizeof(device->device_id) - 1);
   device->dB = 0; // Default volume is 0 dB (gain = 1.0)
 
@@ -329,8 +332,8 @@ void device_init(struct DeviceCore *device) {
 
   char port_name_l[256];
   char port_name_r[256];
-  snprintf(port_name_l, sizeof(port_name_l), "%s_L", device->device_id);
-  snprintf(port_name_r, sizeof(port_name_r), "%s_R", device->device_id);
+  snprintf(port_name_l, sizeof(port_name_l), "%s_L", device->name);
+  snprintf(port_name_r, sizeof(port_name_r), "%s_R", device->name);
 
   struct pw_properties *props_l =
       pw_properties_new(PW_KEY_FORMAT_DSP, "32 bit float mono audio",
@@ -341,11 +344,13 @@ void device_init(struct DeviceCore *device) {
 
   device->pw_core.port_l =
       pw_filter_add_port(global_manager.filter, PW_DIRECTION_INPUT,
-                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_l, NULL, 0);
+                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_l,
+                         global_manager.default_port_params, 1);
 
   device->pw_core.port_r =
       pw_filter_add_port(global_manager.filter, PW_DIRECTION_INPUT,
-                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_r, NULL, 0);
+                         PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_r,
+                         global_manager.default_port_params, 1);
 
   if (device->pw_core.port_l == NULL || device->pw_core.port_r == NULL) {
     pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
@@ -376,8 +381,8 @@ void device_link(struct DeviceCore *device) {
 
   char port_name_l[256];
   char port_name_r[256];
-  snprintf(port_name_l, sizeof(port_name_l), "%s_L", device->device_id);
-  snprintf(port_name_r, sizeof(port_name_r), "%s_R", device->device_id);
+  snprintf(port_name_l, sizeof(port_name_l), "%s_L", device->name);
+  snprintf(port_name_r, sizeof(port_name_r), "%s_R", device->name);
 
   const char *prefix = "capture";
   if (strstr(device->device_id, "output") != NULL ||
@@ -455,6 +460,42 @@ void device_link(struct DeviceCore *device) {
   }
 
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
+}
+
+void device_unlink(struct DeviceCore *device) {
+  if (device == NULL)
+    return;
+
+  pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
+
+  if (device->pw_core.link_l != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_l);
+    device->pw_core.link_l = NULL;
+  }
+  if (device->pw_core.link_r != NULL) {
+    pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_r);
+    device->pw_core.link_r = NULL;
+  }
+
+  pw_sync_roundtrip(global_manager.pw_manager.threaded_loop,
+                    global_manager.pw_manager.core);
+
+  pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
+}
+
+int device_reassign(struct DeviceCore *device, const char *new_device_id) {
+  if (device == NULL || new_device_id == NULL)
+    return -1;
+
+  // 1. Tear down old links (without touching ports)
+  device_unlink(device);
+
+  // 2. Update device_id
+  memset(device->device_id, 0, sizeof(device->device_id));
+  strncpy(device->device_id, new_device_id, sizeof(device->device_id) - 1);
+
+  // 3. Create new links (device_link will be called separately by Python)
+  return 0;
 }
 
 int device_get_dB(struct DeviceCore *device) {

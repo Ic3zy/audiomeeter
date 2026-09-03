@@ -63,6 +63,6 @@ void DeviceRegistry(const char *device_id) {
   if (DeviceRegistry_check_if_exists(device_id) == 1)
     return;
 
-  device_create(device_id);
+  device_create(device_id, device_id);
 }
 // END DEVICE REGISTRY CLASS
