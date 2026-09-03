@@ -14,7 +14,6 @@ depends=(
     'wayland'
     'cairo'
     'pyside6'
-    'python-pulsectl'
     'python-psutil'
     'python-evdev'
     'python-qasync'

@@ -16,11 +16,12 @@ pkgbase = audiomeeter
 	depends = wayland
 	depends = cairo
 	depends = pyside6
-	depends = python-pulsectl
 	depends = python-psutil
 	depends = python-evdev
 	depends = python-qasync
-	source = git+https://github.com/audiomeeter/audiomeeter.git#tag=v1.0.0
+	source = audiomeeter.desktop
+	source = audiomeeter.sh
+	sha256sums = SKIP
 	sha256sums = SKIP
 
 pkgname = audiomeeter

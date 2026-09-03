@@ -22,6 +22,9 @@ jobs:
       - name: Build package inside Arch Linux container
         run: |
           docker run --rm -v "$PWD":/workspace -w /workspace archlinux:latest /bin/bash -c "
+            pacman-key --init && \
+            pacman-key --populate archlinux && \
+            pacman -Sy --noconfirm archlinux-keyring && \
             pacman -Syu --noconfirm && \
             pacman -S --noconfirm --needed \
               base-devel \
@@ -37,7 +40,6 @@ jobs:
               cython \
               python-setuptools \
               pyside6 \
-              python-pulsectl \
               python-psutil \
               python-evdev \
               python-qasync && \
