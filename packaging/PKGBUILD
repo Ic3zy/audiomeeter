@@ -52,14 +52,24 @@ package() {
     install -d "$pkgdir/usr/share/applications"
     install -d "$pkgdir/usr/share/pixmaps"
     install -d "$pkgdir/usr/share/icons/hicolor/512x512/apps"
+    install -d "$pkgdir/usr/share/icons/hicolor/256x256/apps"
+    install -d "$pkgdir/usr/share/icons/hicolor/128x128/apps"
+    install -d "$pkgdir/usr/share/icons/hicolor/64x64/apps"
+    install -d "$pkgdir/usr/share/icons/hicolor/48x48/apps"
+    install -d "$pkgdir/usr/share/icons/hicolor/scalable/apps"
 
     # Install source files
     cp -r src "$pkgdir/usr/share/audiomeeter/"
 
-    # Install application icon
+    # Install application icon in all standard Freedesktop icon locations for KDE / GNOME
     if [ -f "packaging/AudioMeeter_Icon.png" ]; then
         install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/pixmaps/audiomeeter.png"
         install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/audiomeeter.png"
+        install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/audiomeeter.png"
+        install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/audiomeeter.png"
+        install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/audiomeeter.png"
+        install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/icons/hicolor/48x48/apps/audiomeeter.png"
+        install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/icons/hicolor/scalable/apps/audiomeeter.png"
     fi
 
     # Install executable launcher and desktop shortcut

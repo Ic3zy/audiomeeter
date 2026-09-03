@@ -6,3 +6,4 @@ Icon=audiomeeter
 Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Mixer;
+StartupWMClass=audiomeeter

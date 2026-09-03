@@ -23,6 +23,7 @@ def parse_args():
 def main():
     args = parse_args()
     app = QApplication()
+    app.setDesktopFileName("audiomeeter")
 
     icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "AudioMeeter_Icon.png")
     if os.path.exists(icon_path):
