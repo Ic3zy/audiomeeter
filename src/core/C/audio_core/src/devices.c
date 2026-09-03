@@ -218,12 +218,6 @@ struct SinkCore *sink_create(const char *name, const char *device_id) {
   if (name == NULL || device_id == NULL)
     return NULL;
 
-  if (global_manager.sinks_count >=
-      (int)(sizeof(global_manager.sinks) / sizeof(global_manager.sinks[0]))) {
-    fprintf(stderr, "[AudioMeeter] sink_create: max sink count reached\n");
-    return NULL;
-  }
-
   struct SinkCore *sink = calloc(1, sizeof(*sink));
   if (sink == NULL)
     abort();
@@ -235,11 +229,16 @@ struct SinkCore *sink_create(const char *name, const char *device_id) {
 
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 
-  global_manager.sinks[global_manager.sinks_count] = sink;
-  global_manager.sinks_count++;
-
   // Set up PipeWire ports + links atomically
   sink_setup_pw_locked(sink);
+
+  if (global_manager.sinks_count <
+      (int)(sizeof(global_manager.sinks) / sizeof(global_manager.sinks[0]))) {
+    global_manager.sinks[global_manager.sinks_count] = sink;
+    global_manager.sinks_count++;
+  } else {
+    fprintf(stderr, "[AudioMeeter] sink_create: max sink count reached\n");
+  }
 
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
   return sink;
@@ -283,12 +282,8 @@ int sink_set_gain_from_db(struct SinkCore *sink, float db) {
 
 // DEVICE CLASS
 struct DeviceCore *device_create(const char *device_id) {
-  if (global_manager.devices_count >=
-      (int)(sizeof(global_manager.devices) /
-            sizeof(global_manager.devices[0]))) {
-    fprintf(stderr, "[pipe_process] device_create: max device count reached\n");
+  if (device_id == NULL)
     return NULL;
-  }
 
   struct DeviceCore *device = calloc(1, sizeof(*device));
   if (device == NULL)
@@ -297,10 +292,20 @@ struct DeviceCore *device_create(const char *device_id) {
   strncpy(device->device_id, device_id, sizeof(device->device_id) - 1);
   device->dB = 0; // Default volume is 0 dB (gain = 1.0)
 
-  global_manager.devices[global_manager.devices_count] = device;
-  global_manager.devices_count++;
-
   device_init(device);
+
+  pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
+
+  if (global_manager.devices_count <
+      (int)(sizeof(global_manager.devices) /
+            sizeof(global_manager.devices[0]))) {
+    global_manager.devices[global_manager.devices_count] = device;
+    global_manager.devices_count++;
+  } else {
+    fprintf(stderr, "[pipe_process] device_create: max device count reached\n");
+  }
+
+  pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 
   return device;
 }
@@ -572,20 +577,9 @@ int sink_delete(struct SinkCore *sink) {
   if (sink == NULL)
     return -1;
 
-  // 1. Tear down PipeWire resources atomically
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
-  sink_teardown_pw_locked(sink);
-  pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 
-  // 2. Remove sink reference from all device bridged_sinks lists
-  for (int d = 0; d < global_manager.devices_count; d++) {
-    struct DeviceCore *dev = global_manager.devices[d];
-    if (dev != NULL) {
-      device_remove_bridged_sink(dev, sink);
-    }
-  }
-
-  // 3. Remove sink from global sinks array
+  // 1. Remove sink from global_manager.sinks array FIRST inside lock
   int found_idx = -1;
   for (int i = 0; i < global_manager.sinks_count; i++) {
     if (global_manager.sinks[i] == sink) {
@@ -602,6 +596,19 @@ int sink_delete(struct SinkCore *sink) {
     global_manager.sinks_count--;
   }
 
+  // 2. Tear down PipeWire resources atomically
+  sink_teardown_pw_locked(sink);
+
+  pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
+
+  // 3. Remove sink reference from all device bridged_sinks lists
+  for (int d = 0; d < global_manager.devices_count; d++) {
+    struct DeviceCore *dev = global_manager.devices[d];
+    if (dev != NULL) {
+      device_remove_bridged_sink(dev, sink);
+    }
+  }
+
   // 4. Free memory
   free(sink);
   return 0;
@@ -614,7 +621,24 @@ int device_delete(struct DeviceCore *device) {
   // 1. Lock threaded loop
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 
-  // 2. Destroy links
+  // 2. Remove device from global_manager.devices array FIRST inside lock
+  int found_idx = -1;
+  for (int i = 0; i < global_manager.devices_count; i++) {
+    if (global_manager.devices[i] == device) {
+      found_idx = i;
+      break;
+    }
+  }
+
+  if (found_idx != -1) {
+    for (int i = 0; i < global_manager.devices_count - 1; i++) {
+      global_manager.devices[i] = global_manager.devices[i + 1];
+    }
+    global_manager.devices[global_manager.devices_count - 1] = NULL;
+    global_manager.devices_count--;
+  }
+
+  // 3. Destroy links
   if (device->pw_core.link_l != NULL) {
     pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_l);
     device->pw_core.link_l = NULL;
@@ -624,7 +648,7 @@ int device_delete(struct DeviceCore *device) {
     device->pw_core.link_r = NULL;
   }
 
-  // 3. Remove ports from filter
+  // 4. Remove ports from filter
   if (device->pw_core.port_l != NULL) {
     pw_filter_remove_port(device->pw_core.port_l);
     device->pw_core.port_l = NULL;
@@ -640,23 +664,6 @@ int device_delete(struct DeviceCore *device) {
                     global_manager.pw_manager.core);
 
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
-
-  // 4. Remove device from global devices array
-  int found_idx = -1;
-  for (int i = 0; i < global_manager.devices_count; i++) {
-    if (global_manager.devices[i] == device) {
-      found_idx = i;
-      break;
-    }
-  }
-
-  if (found_idx != -1) {
-    for (int i = found_idx; i < global_manager.devices_count - 1; i++) {
-      global_manager.devices[i] = global_manager.devices[i + 1];
-    }
-    global_manager.devices[global_manager.devices_count - 1] = NULL;
-    global_manager.devices_count--;
-  }
 
   // 5. Free band structures and device memory
   if (device->eq.bass)

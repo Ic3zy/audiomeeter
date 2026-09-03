@@ -101,7 +101,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
   // Retrieve and clear all output sink buffers (exactly once!)
   for (int s = 0; s < global_manager.sinks_count; s++) {
     struct SinkCore *sink = global_manager.sinks[s];
-    if (sink == NULL)
+    if (sink == NULL || sink->pw_core.port_l == NULL ||
+        sink->pw_core.port_r == NULL)
       continue;
 
     float *out_l = pw_filter_get_dsp_buffer(sink->pw_core.port_l, n_samples);
@@ -121,7 +122,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
   // Retrieve all input device buffers (exactly once!)
   for (int d = 0; d < global_manager.devices_count; d++) {
     struct DeviceCore *device = global_manager.devices[d];
-    if (device == NULL)
+    if (device == NULL || device->pw_core.port_l == NULL ||
+        device->pw_core.port_r == NULL)
       continue;
 
     device_bufs_l[d] =
