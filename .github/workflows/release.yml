@@ -43,10 +43,11 @@ jobs:
               python-psutil \
               python-evdev \
               python-qasync && \
-            chown -R nobody:nobody /workspace && \
+            useradd -m builder && \
+            chown -R builder:builder /workspace && \
             chmod +x /workspace/packaging/build_release.sh && \
-            su nobody -s /bin/bash -c '/workspace/packaging/build_release.sh' && \
-            chmod -R 755 /workspace/packaging/
+            su builder -c '/workspace/packaging/build_release.sh' && \
+            chmod -R 777 /workspace
           "
 
       - name: Upload Package Asset to GitHub Release Tag
