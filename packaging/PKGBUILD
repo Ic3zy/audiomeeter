@@ -1,0 +1,58 @@
+# Maintainer: AudioMeeter Team <dev@audiomeeter.org>
+pkgname=audiomeeter
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Virtual Audio Mixer for Linux using PipeWire and Qt"
+arch=('x86_64')
+url="https://github.com/audiomeeter/audiomeeter"
+license=('MIT')
+
+# Runtime dependencies pulled automatically by pacman/paru
+depends=(
+    'python'
+    'pipewire'
+    'wayland'
+    'cairo'
+    'pyside6'
+    'python-pulsectl'
+    'python-psutil'
+    'python-evdev'
+    'python-qasync'
+)
+
+# Build-time dependencies for compiling C and Cython on user's machine
+makedepends=(
+    'git'
+    'gcc'
+    'make'
+    'pkgconf'
+    'cython'
+    'python-setuptools'
+)
+
+source=("audiomeeter.desktop" "audiomeeter.sh")
+sha256sums=('SKIP' 'SKIP')
+
+build() {
+    cd "$startdir/.."
+    make -C src/core/C/audio_core clean
+    make -C src/core/C/audio_core
+    make -C src/core/C/wayland-volume-osd clean
+    make -C src/core/C/wayland-volume-osd libosd.so
+}
+
+package() {
+    cd "$startdir/.."
+    
+    # Create target directories
+    install -d "$pkgdir/usr/share/audiomeeter"
+    install -d "$pkgdir/usr/bin"
+    install -d "$pkgdir/usr/share/applications"
+
+    # Install source files
+    cp -r src "$pkgdir/usr/share/audiomeeter/"
+
+    # Install executable launcher and desktop shortcut
+    install -m755 packaging/audiomeeter.sh "$pkgdir/usr/bin/audiomeeter"
+    install -m644 packaging/audiomeeter.desktop "$pkgdir/usr/share/applications/audiomeeter.desktop"
+}

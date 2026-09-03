@@ -9,3 +9,7 @@ build
 *.raw
 test2/
 test/
+packaging/pkg/
+packaging/src/
+packaging/audiomeeter/
+*.pkg.tar.zst

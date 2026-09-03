@@ -1,0 +1,58 @@
+name: Build and Publish Release Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    name: Build Arch Linux Package (.pkg.tar.zst)
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Arch build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel \
+            git \
+            gcc \
+            make \
+            pkgconf \
+            pipewire \
+            wayland \
+            wayland-protocols \
+            cairo \
+            python \
+            cython \
+            python-setuptools \
+            pyside6 \
+            python-pulsectl \
+            python-psutil \
+            python-evdev \
+            python-qasync
+
+      - name: Set workspace ownership for makepkg
+        run: |
+          chown -R nobody:nobody .
+
+      - name: Build binary package with makepkg
+        run: |
+          chmod +x packaging/build_release.sh
+          su nobody -s /bin/bash -c "./packaging/build_release.sh"
+
+      - name: Upload Package Asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packaging/*.pkg.tar.zst
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

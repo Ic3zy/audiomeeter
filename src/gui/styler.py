@@ -3,11 +3,13 @@ from pathlib import Path
 
 _styler_instance = None
 
+DEFAULT_STYLES_PATH = Path(__file__).resolve().parent.parent / "assets" / "styles"
+
 # For developers
 class Hot_Reloader(QObject):
-    def __init__(self, src_path="src/assets/styles"):
+    def __init__(self, src_path=None):
         super().__init__()
-        self.styles_path = src_path
+        self.styles_path = src_path if src_path is not None else DEFAULT_STYLES_PATH
         self._style_to_qt_object = {}
         self._path_to_name = {}
 
@@ -66,12 +68,12 @@ class Hot_Reloader(QObject):
 
 
 class Styler:
-    def __init__(self, styles_path="src/assets/styles"):
+    def __init__(self, styles_path=None):
         global _styler_instance
-        self.styles_path = styles_path
+        self.styles_path = styles_path if styles_path is not None else DEFAULT_STYLES_PATH
         self.style_sheets = {}
         self.load_styles()
-        self.hot_reloader = Hot_Reloader(styles_path)
+        self.hot_reloader = Hot_Reloader(self.styles_path)
         _styler_instance = self
 
     @classmethod
