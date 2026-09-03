@@ -17,6 +17,9 @@ depends=(
     'python-psutil'
     'python-evdev'
     'python-qasync'
+    'gcc'
+    'cython'
+    'python-setuptools'
 )
 
 # Build-time dependencies for compiling C and Cython on user's machine

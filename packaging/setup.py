@@ -33,7 +33,7 @@ engine_ext = Extension(
     ],
     library_dirs=[C_DIR],
     libraries=["engine", "pipewire-0.3", "m"],
-    runtime_library_dirs=[C_DIR],
+    extra_link_args=["-Wl,-rpath,$ORIGIN/C/audio_core"],
     define_macros=[("_REENTRANT", None)],
     language="c",
 )
@@ -48,7 +48,7 @@ wvosd_ext = Extension(
     ],
     library_dirs=[WVOSD_C_DIR],
     libraries=["osd"],
-    runtime_library_dirs=[WVOSD_C_DIR],
+    extra_link_args=["-Wl,-rpath,$ORIGIN/C/wayland-volume-osd"],
     language="c",
 )
 
