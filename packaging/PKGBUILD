@@ -50,9 +50,17 @@ package() {
     install -d "$pkgdir/usr/share/audiomeeter"
     install -d "$pkgdir/usr/bin"
     install -d "$pkgdir/usr/share/applications"
+    install -d "$pkgdir/usr/share/pixmaps"
+    install -d "$pkgdir/usr/share/icons/hicolor/512x512/apps"
 
     # Install source files
     cp -r src "$pkgdir/usr/share/audiomeeter/"
+
+    # Install application icon
+    if [ -f "packaging/AudioMeeter_Icon.png" ]; then
+        install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/pixmaps/audiomeeter.png"
+        install -m644 packaging/AudioMeeter_Icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/audiomeeter.png"
+    fi
 
     # Install executable launcher and desktop shortcut
     install -m755 packaging/audiomeeter.sh "$pkgdir/usr/bin/audiomeeter"

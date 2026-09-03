@@ -1,7 +1,9 @@
+import os
 import asyncio
 import argparse
 import signal
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 from qasync import QEventLoop
 
 from gui import Window
@@ -21,6 +23,10 @@ def parse_args():
 def main():
     args = parse_args()
     app = QApplication()
+
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "AudioMeeter_Icon.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
