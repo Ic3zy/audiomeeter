@@ -81,6 +81,7 @@ jobs:
 
       - name: Build Ubuntu/Debian package (.deb)
         run: |
+          sudo chown -R $(id -u):$(id -g) .
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             build-essential \
