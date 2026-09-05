@@ -50,6 +50,13 @@ class Window(QMainWindow):
         self.layout.addStretch(1) 
         # ----------------------------
 
+        # Start non-blocking background update check
+        try:
+            from utils.updater import start_update_checker
+            start_update_checker(self)
+        except Exception as e:
+            print(f"Update checker initialization skipped: {e}")
+
         # self.ram_timer = QTimer(self)
         # self.ram_timer.timeout.connect(self.log_ram_usage)
         # self.ram_timer.start(2000)

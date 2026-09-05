@@ -20,6 +20,29 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Sync and Commit src/version.json with GitHub Tag Name
+        run: |
+          TAG="${{ github.ref_name }}"
+          CLEAN_VER=$(echo "$TAG" | grep -oP '\d+(\.\d+)+' | head -n 1)
+          if [ -z "$CLEAN_VER" ]; then
+            CLEAN_VER="0.0.127"
+          fi
+          echo "[+] Syncing src/version.json with tag: $TAG (clean version: $CLEAN_VER)"
+          cat << EOF > src/version.json
+          {
+            "version": "${CLEAN_VER}",
+            "tag_name": "${TAG}"
+          }
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/version.json
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "chore(release): update version.json to ${TAG} [skip ci]"
+            git push origin HEAD:dev || git push origin HEAD:main || true
+          fi
+
       - name: Build package inside Arch Linux container
         run: |
           docker run --rm -v "$PWD":/workspace -w /workspace archlinux:latest /bin/bash -c "
@@ -63,9 +86,9 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
           
           if [ -n "$PREV_TAG" ]; then
-            CHANGES=$(git log --oneline --no-merges ${PREV_TAG}..${TAG} | sed 's/^[a-f0-9]* /- /')
+            CHANGES=$(git log --oneline --no-merges ${PREV_TAG}..${TAG} | grep -v -i -E "version\.json|\[skip ci\]|chore\(release\)" | sed 's/^[a-f0-9]* /- /')
           else
-            CHANGES=$(git log --oneline --no-merges -n 15 | sed 's/^[a-f0-9]* /- /')
+            CHANGES=$(git log --oneline --no-merges -n 15 | grep -v -i -E "version\.json|\[skip ci\]|chore\(release\)" | sed 's/^[a-f0-9]* /- /')
           fi
 
           if [ -z "$CHANGES" ]; then
