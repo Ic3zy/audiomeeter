@@ -48,7 +48,7 @@ For detailed instructions on routing Discord audio, Spotify, gaming streams, and
 ```
 [ Hardware Mics ] ──┐
 [ Desktop Audio ] ──┼──► [ AudioMeeter C Core (SSE4.2 DSP) ] ──┬──► [ A1 / A2 / A3 Speakers ]
-[ Media / Discord ] ──┘     └─ RT-Biquad Filters (Eq)         └──► [ B1 / B2 Virtual Mics ]
+[ Media/Discord ] ──┘     └─ RT-Biquad Filters (Eq)          └──► [ B1 / B2  Virtual Mics ]
                                        ▲
                             [ Python / PyQt6 GUI ]
 ```
