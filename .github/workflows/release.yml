@@ -70,11 +70,11 @@ jobs:
             useradd -m builder || true && \
             chown -R builder:builder /workspace && \
             chmod +x /workspace/packaging/build_release.sh && \
-            su builder -c \"/workspace/packaging/build_release.sh '${{ github.ref_name }}'\" && \
+            su builder -c "/workspace/packaging/build_release.sh '${{ github.ref_name }}'" && \
             cd /workspace/packaging && \
-            FOUND=\$(ls *.pkg.tar.zst 2>/dev/null | head -n 1) && \
-            if [ -n \"\$FOUND\" ] && [ \"\$FOUND\" != \"audiomeeter-${{ github.ref_name }}.pkg.tar.zst\" ]; then \
-              mv \"\$FOUND\" \"audiomeeter-${{ github.ref_name }}.pkg.tar.zst\"; \
+            FOUND=$(ls *.pkg.tar.zst 2>/dev/null | head -n 1) && \
+            if [ -n "$FOUND" ] && [ "$FOUND" != "audiomeeter-${{ github.ref_name }}.pkg.tar.zst" ]; then \
+              mv "$FOUND" "audiomeeter-${{ github.ref_name }}.pkg.tar.zst"; \
             fi && \
             chmod -R 777 /workspace
           "
@@ -157,7 +157,7 @@ jobs:
           curl -sSLfO https://github.com/${REPO}/releases/download/${TAG}/audiomeeter-${TAG}-ubuntu-amd64.deb && sudo apt install -y ./audiomeeter-${TAG}-ubuntu-amd64.deb && rm -f audiomeeter-${TAG}-ubuntu-amd64.deb
           \`\`\`
 
-          > **Note**: During the Ubuntu installation, C libraries are automatically compiled on your system (takes a few seconds).
+          > **Note:** During the Ubuntu installation, C libraries are automatically compiled on your system (takes a few seconds).
 
           ---
 
