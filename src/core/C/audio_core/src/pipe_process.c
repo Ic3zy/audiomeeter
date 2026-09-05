@@ -32,34 +32,35 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
   }
 
   for (uint32_t i = 0; i < n_samples; i++) {
-    if (in_l)
-      in_l[i] = in_l[i] * device->eq.gain;
-    if (in_r)
-      in_r[i] = in_r[i] * device->eq.gain;
+    in_l[i] = in_l[i] * device->eq.gain;
+    in_r[i] = in_r[i] * device->eq.gain;
+  }
 
-    if (device->eq.bass == NULL || device->eq.mid == NULL ||
-        device->eq.treble == NULL)
-      continue;
-
-    if (device->eq.bass->db_gain != 0.0f) {
-      if (in_l)
-        in_l[i] = process_sample(device->eq.bass->state_left, in_l[i]);
-      if (in_r)
-        in_r[i] = process_sample(device->eq.bass->state_right, in_r[i]);
+  if (device->eq.bass->db_gain != 0.0f) {
+    for (uint32_t i = 0; i < n_samples; i++) {
+      in_l[i] = process_sample(device->eq.bass->state_left, in_l[i]);
+      in_r[i] = process_sample(device->eq.bass->state_right, in_r[i]);
     }
-    if (device->eq.mid->db_gain != 0.0f) {
+  }
+
+  if (device->eq.mid->db_gain != 0.0f) {
+    for (uint32_t i = 0; i < n_samples; i++) {
       if (in_l)
         in_l[i] = process_sample(device->eq.mid->state_left, in_l[i]);
       if (in_r)
         in_r[i] = process_sample(device->eq.mid->state_right, in_r[i]);
     }
-    if (device->eq.treble->db_gain != 0.0f) {
+  }
+  if (device->eq.treble->db_gain != 0.0f) {
+    for (uint32_t i = 0; i < n_samples; i++) {
       if (in_l)
         in_l[i] = process_sample(device->eq.treble->state_left, in_l[i]);
       if (in_r)
         in_r[i] = process_sample(device->eq.treble->state_right, in_r[i]);
     }
-    if (device->eq.mono && in_l && in_r) {
+  }
+  if (device->eq.mono && in_l && in_r) {
+    for (uint32_t i = 0; i < n_samples; i++) {
       float top = (in_l[i] + in_r[i]) * 0.5f;
       in_r[i] = top;
       in_l[i] = top;
