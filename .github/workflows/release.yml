@@ -92,8 +92,7 @@ jobs:
             libwayland-bin \
             libcairo2-dev \
             dpkg-dev
-          chmod +x packaging/build_deb.sh
-          packaging/build_deb.sh "${{ github.ref_name }}"
+          bash packaging/build_deb.sh "${{ github.ref_name }}"
 
       - name: Verify Release Asset Files
         run: |
