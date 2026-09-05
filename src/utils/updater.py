@@ -4,6 +4,7 @@ import re
 import json
 import asyncio
 import subprocess
+import shutil
 import urllib.request
 
 from PySide6.QtWidgets import (
@@ -44,17 +45,47 @@ def parse_version(v_str: str) -> tuple:
     return (0, 0, 0)
 
 
-def build_install_command(tag_name: str, release_body: str) -> str:
-    bash_block = re.search(r"```bash\s*([\s\S]*?)```", release_body, re.IGNORECASE)
-    if bash_block:
-        full_cmd = bash_block.group(1).strip()
-        full_cmd = re.sub(r"\bsudo\b\s*", "", full_cmd)
-        if "curl" in full_cmd and "pacman" in full_cmd:
-            return full_cmd
+def is_debian_based() -> bool:
+    if os.path.exists("/etc/debian_version"):
+        return True
+    if os.path.exists("/etc/os-release"):
+        try:
+            with open("/etc/os-release", "r", encoding="utf-8") as f:
+                content = f.read().lower()
+                if any(distro in content for distro in ["debian", "ubuntu", "mint", "pop", "elementary", "zorin"]):
+                    return True
+        except Exception:
+            pass
+    if shutil.which("dpkg") or shutil.which("apt"):
+        if not shutil.which("pacman"):
+            return True
+    return False
 
-    download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{tag_name}/audiomeeter-{tag_name}.pkg.tar.zst"
-    pkg_file = f"audiomeeter-{tag_name}.pkg.tar.zst"
-    return f"curl -sSLfO {download_url} && pacman -U --noconfirm {pkg_file} && rm -f {pkg_file}"
+
+def build_install_command(tag_name: str, release_body: str) -> str:
+    is_deb = is_debian_based()
+    bash_blocks = re.findall(r"```bash\s*([\s\S]*?)```", release_body, re.IGNORECASE)
+
+    if is_deb:
+        for block in bash_blocks:
+            cmd = block.strip()
+            if "apt" in cmd or "dpkg" in cmd or ".deb" in cmd:
+                clean_cmd = re.sub(r"\bsudo\b\s*", "", cmd).strip()
+                return clean_cmd
+
+        download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{tag_name}/audiomeeter-{tag_name}-ubuntu-amd64.deb"
+        deb_file = f"audiomeeter-{tag_name}-ubuntu-amd64.deb"
+        return f"curl -sSLfO {download_url} && apt install -y ./{deb_file} && rm -f {deb_file}"
+    else:
+        for block in bash_blocks:
+            cmd = block.strip()
+            if "pacman" in cmd or ".pkg.tar.zst" in cmd:
+                clean_cmd = re.sub(r"\bsudo\b\s*", "", cmd).strip()
+                return clean_cmd
+
+        download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{tag_name}/audiomeeter-{tag_name}.pkg.tar.zst"
+        pkg_file = f"audiomeeter-{tag_name}.pkg.tar.zst"
+        return f"curl -sSLfO {download_url} && pacman -U --noconfirm {pkg_file} && rm -f {pkg_file}"
 
 
 class CompactUpdateDialog(QDialog):
