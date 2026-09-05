@@ -45,18 +45,14 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
 
   if (device->eq.mid->db_gain != 0.0f) {
     for (uint32_t i = 0; i < n_samples; i++) {
-      if (in_l)
-        in_l[i] = process_sample(device->eq.mid->state_left, in_l[i]);
-      if (in_r)
-        in_r[i] = process_sample(device->eq.mid->state_right, in_r[i]);
+      in_l[i] = process_sample(device->eq.mid->state_left, in_l[i]);
+      in_r[i] = process_sample(device->eq.mid->state_right, in_r[i]);
     }
   }
   if (device->eq.treble->db_gain != 0.0f) {
     for (uint32_t i = 0; i < n_samples; i++) {
-      if (in_l)
-        in_l[i] = process_sample(device->eq.treble->state_left, in_l[i]);
-      if (in_r)
-        in_r[i] = process_sample(device->eq.treble->state_right, in_r[i]);
+      in_l[i] = process_sample(device->eq.treble->state_left, in_l[i]);
+      in_r[i] = process_sample(device->eq.treble->state_right, in_r[i]);
     }
   }
   if (device->eq.mono && in_l && in_r) {
