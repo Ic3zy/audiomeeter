@@ -12,3 +12,4 @@ packaging/pkg/
 packaging/src/
 packaging/audiomeeter/
 *.pkg.tar.zst
+*.deb

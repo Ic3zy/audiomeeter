@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-release:
-    name: Build Arch Linux Package (.pkg.tar.zst)
+    name: Build Arch Linux & Ubuntu/Debian Packages
     runs-on: ubuntu-latest
 
     steps:
@@ -43,7 +43,7 @@ jobs:
             git push origin HEAD:dev || git push origin HEAD:main || true
           fi
 
-      - name: Build package inside Arch Linux container
+      - name: Build Arch Linux package (.pkg.tar.zst) inside Arch container
         run: |
           docker run --rm -v "$PWD":/workspace -w /workspace archlinux:latest /bin/bash -c "
             pacman-key --init && \
@@ -70,14 +70,58 @@ jobs:
             useradd -m builder || true && \
             chown -R builder:builder /workspace && \
             chmod +x /workspace/packaging/build_release.sh && \
-            su builder -c "/workspace/packaging/build_release.sh '${{ github.ref_name }}'" && \
+            su builder -c \"/workspace/packaging/build_release.sh '${{ github.ref_name }}'\" && \
             cd /workspace/packaging && \
-            FOUND=$(ls *.pkg.tar.zst 2>/dev/null | head -n 1) && \
-            if [ -n "$FOUND" ] && [ "$FOUND" != "audiomeeter-${{ github.ref_name }}.pkg.tar.zst" ]; then \
-              mv "$FOUND" "audiomeeter-${{ github.ref_name }}.pkg.tar.zst"; \
+            FOUND=\$(ls *.pkg.tar.zst 2>/dev/null | head -n 1) && \
+            if [ -n \"\$FOUND\" ] && [ \"\$FOUND\" != \"audiomeeter-${{ github.ref_name }}.pkg.tar.zst\" ]; then \
+              mv \"\$FOUND\" \"audiomeeter-${{ github.ref_name }}.pkg.tar.zst\"; \
             fi && \
             chmod -R 777 /workspace
           "
+
+      - name: Build Ubuntu/Debian package (.deb)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            gcc \
+            make \
+            pkg-config \
+            libpipewire-0.3-dev \
+            libwayland-dev \
+            libwayland-bin \
+            libcairo2-dev \
+            dpkg-dev
+          chmod +x packaging/build_deb.sh
+          packaging/build_deb.sh "${{ github.ref_name }}"
+
+      - name: Verify Release Asset Files
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Verify Arch package
+          TARGET_ARCH="packaging/audiomeeter-${TAG}.pkg.tar.zst"
+          if [ ! -f "$TARGET_ARCH" ]; then
+            FOUND=$(ls packaging/*.pkg.tar.zst 2>/dev/null | head -n 1)
+            if [ -n "$FOUND" ]; then
+              sudo mv "$FOUND" "$TARGET_ARCH"
+            else
+              echo "[!] Error: No Arch package file found!"
+              exit 1
+            fi
+          fi
+          echo "[+] Verified Arch asset: $TARGET_ARCH"
+          # Verify .deb package
+          TARGET_DEB="packaging/audiomeeter-${TAG}_amd64.deb"
+          # build_deb.sh uses underscore before version, find it
+          FOUND_DEB=$(ls packaging/audiomeeter_${TAG}_amd64.deb 2>/dev/null || ls packaging/audiomeeter*amd64.deb 2>/dev/null | head -n 1 || true)
+          if [ -z "$FOUND_DEB" ]; then
+            echo "[!] Error: No .deb package file found!"
+            exit 1
+          fi
+          # Normalize to a clean final name
+          mv "$FOUND_DEB" "packaging/audiomeeter-${TAG}-ubuntu-amd64.deb" 2>/dev/null || true
+          TARGET_DEB="packaging/audiomeeter-${TAG}-ubuntu-amd64.deb"
+          echo "[+] Verified Ubuntu/Debian asset: $TARGET_DEB"
 
       - name: Generate Release Notes & Changelog
         run: |
@@ -100,13 +144,21 @@ jobs:
 
           A high-performance, low-latency virtual audio mixer for Linux built natively on PipeWire.
 
-          ## ⚡ Quick One-Line Installation (Arch Linux / Manjaro / EndeavourOS)
+          ---
 
-          Copy and paste this single command into your terminal to automatically download, install, and clean up the package:
+          ## ⚡ Quick Installation
 
+          ### 🔵 Arch Linux / Manjaro / EndeavourOS
           \`\`\`bash
           curl -sSLfO https://github.com/${REPO}/releases/download/${TAG}/audiomeeter-${TAG}.pkg.tar.zst && sudo pacman -U --noconfirm audiomeeter-${TAG}.pkg.tar.zst && rm -f audiomeeter-${TAG}.pkg.tar.zst
           \`\`\`
+
+          ### 🟠 Ubuntu / Debian
+          \`\`\`bash
+          curl -sSLfO https://github.com/${REPO}/releases/download/${TAG}/audiomeeter-${TAG}-ubuntu-amd64.deb && sudo apt install -y ./audiomeeter-${TAG}-ubuntu-amd64.deb && rm -f audiomeeter-${TAG}-ubuntu-amd64.deb
+          \`\`\`
+
+          > **Note**: During the Ubuntu installation, C libraries are automatically compiled on your system (takes a few seconds).
 
           ---
 
@@ -124,28 +176,15 @@ jobs:
           - **Wayland OSD Overlay**: Hardware-accelerated Volume OSD rendered via \`zwlr_layer_shell_v1\` (\`libosd.so\`).
           EOF
 
-      - name: Verify Release Asset File
-        run: |
-          TAG="${{ github.ref_name }}"
-          TARGET="packaging/audiomeeter-${TAG}.pkg.tar.zst"
-          if [ ! -f "$TARGET" ]; then
-            FOUND=$(ls packaging/*.pkg.tar.zst 2>/dev/null | head -n 1)
-            if [ -n "$FOUND" ]; then
-              sudo mv "$FOUND" "$TARGET"
-            else
-              echo "[!] Error: No package file found to upload!"
-              exit 1
-            fi
-          fi
-          echo "[+] Verified release asset: $TARGET"
-
-      - name: Upload Package Asset to GitHub Release Tag
+      - name: Upload Package Assets to GitHub Release Tag
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ github.ref_name }}
           body_path: ${{ runner.temp }}/release_body.md
-          files: packaging/audiomeeter-${{ github.ref_name }}.pkg.tar.zst
+          files: |
+            packaging/audiomeeter-${{ github.ref_name }}.pkg.tar.zst
+            packaging/audiomeeter-${{ github.ref_name }}-ubuntu-amd64.deb
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
