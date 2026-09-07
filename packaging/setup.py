@@ -9,6 +9,7 @@ PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 SRC_DIR = os.path.join(PROJECT_ROOT, "src")
 C_DIR = os.path.join(SRC_DIR, "core", "C", "audio_core")
 WVOSD_C_DIR = os.path.join(SRC_DIR, "core", "C", "wayland-volume-osd")
+LV2_C_DIR = os.path.join(SRC_DIR, "core", "C", "lv2-api")
 
 def build_c_libraries():
     print("[AudioMeeter Build] Compiling C shared libraries...")
@@ -52,13 +53,31 @@ wvosd_ext = Extension(
     language="c",
 )
 
+lv2_ext = Extension(
+    name="src.core.lv2",
+    sources=[
+        os.path.join(SRC_DIR, "core", "lv2.pyx"),
+        os.path.join(LV2_C_DIR, "src", "lv2_manager.c"),
+    ],
+    include_dirs=[
+        os.path.join(LV2_C_DIR, "src", "include"),
+        "/usr/include/lilv-0",
+        "/usr/include/sratom-0",
+        "/usr/include/sord-0",
+        "/usr/include/serd-0",
+        "/usr/include/zix-0",
+    ],
+    libraries=["lilv-0", "m"],
+    language="c",
+)
+
 setup(
     name="audiomeeter",
     version="1.0.0",
     description="Virtual Audio Mixer for Linux using PipeWire and Qt",
     author="AudioMeeter Team",
     cmdclass={"build_py": CustomBuildPy},
-    ext_modules=[engine_ext, wvosd_ext],
+    ext_modules=[engine_ext, wvosd_ext, lv2_ext],
     install_requires=[
         "PySide6",
         "qasync",
