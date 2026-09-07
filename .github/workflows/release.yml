@@ -155,7 +155,7 @@ jobs:
 
           ### 🟠 Ubuntu / Debian
           \`\`\`bash
-          curl -sSLfO https://github.com/${REPO}/releases/download/${TAG}/audiomeeter-${TAG}-ubuntu-amd64.deb && sudo apt install -y ./audiomeeter-${TAG}-ubuntu-amd64.deb && rm -f audiomeeter-${TAG}-ubuntu-amd64.deb
+          curl -sSLfO https://github.com/${REPO}/releases/download/${TAG}/audiomeeter-${TAG}-ubuntu-amd64.deb && sudo apt install -y --allow-downgrades ./audiomeeter-${TAG}-ubuntu-amd64.deb && rm -f audiomeeter-${TAG}-ubuntu-amd64.deb
           \`\`\`
 
           > **Note:** During the Ubuntu installation, C libraries are automatically compiled on your system (takes a few seconds).

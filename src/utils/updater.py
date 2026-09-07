@@ -75,7 +75,7 @@ def build_install_command(tag_name: str, release_body: str) -> str:
 
         download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{tag_name}/audiomeeter-{tag_name}-ubuntu-amd64.deb"
         deb_file = f"audiomeeter-{tag_name}-ubuntu-amd64.deb"
-        return f"curl -sSLfO {download_url} && apt install -y ./{deb_file} && rm -f {deb_file}"
+        return f"curl -sSLfO {download_url} && apt install -y --allow-downgrades ./{deb_file} && rm -f {deb_file}"
     else:
         for block in bash_blocks:
             cmd = block.strip()

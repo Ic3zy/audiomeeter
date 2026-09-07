@@ -2,7 +2,7 @@
 set -e
 
 # Usage: ./packaging/build_deb.sh [TAG_NAME]
-TAG=${1:-"v1.0.0"}
+TAG=${1:-"v0.0.1"}
 
 # Extract clean debian-compatible version (must start with digit, no underscores allowed)
 CLEAN_VER=$(echo "$TAG" | sed 's/^v//' | tr '_' '.')
