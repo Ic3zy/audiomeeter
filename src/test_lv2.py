@@ -5,6 +5,7 @@ chain = lv2.Lv2Chain(n_samples=512, sample_rate=48000)
 
 plugins = chain.get_available_plugins()
 target = None
+print(plugins)
 
 for pl in plugins:
     if pl["uri"] == "https://github.com/lucianodato/noise-repellent#adaptive":

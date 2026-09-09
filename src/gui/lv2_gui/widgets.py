@@ -1,5 +1,6 @@
 import sys
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -9,7 +10,18 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QCheckBox,
+    QGraphicsDropShadowEffect,
 )
+
+from PySide6.QtWidgets import QScrollArea, QSizePolicy
+
+colors = {
+    "plugin_wd_bg": "#033d43",
+    "plugin_wd_bg_bottom": "#021f24",
+    "plugin_border": "#0e5a63",
+    "plugin_border_hover": "#2dd4c8",
+    "plugin_label": "#d6f5f5",
+}
 
 
 class Lv2ParamSlider(QSlider):
@@ -134,8 +146,106 @@ class Lv2ParamWidget:
             callback(value)
 
 
+class Lv2PluginWidget(QWidget):
+
+    def __init__(self, param_info):
+        super().__init__()
+        self.param_info = param_info
+        self.param_name = param_info["name"]
+        self.init_widget()
+
+    def init_widget(self):
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+        layout.setContentsMargins(14, 12, 14, 12)
+
+        label = QLabel(self.param_name)
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("""
+            QLabel {
+                color: #eafdff;
+                font-size: 13px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                background: transparent;
+                border: none;
+            }
+        """)
+        layout.addWidget(label)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(18)
+        shadow.setXOffset(0)
+        shadow.setYOffset(3)
+        shadow.setColor(QColor(0, 0, 0, 160))
+        self.setGraphicsEffect(shadow)
+
+        self.setStyleSheet(f"""
+    Lv2PluginWidget {{
+        background: qlineargradient(
+            x1:0, y1:0, x2:0, y2:1,
+            stop:0 {colors["plugin_wd_bg"]},
+            stop:1 {colors["plugin_wd_bg_bottom"]}
+        );
+        border: 1px solid {colors["plugin_border"]};
+        border-radius: 10px;
+    }}
+    Lv2PluginWidget:hover {{
+        border: 1px solid {colors["plugin_border_hover"]};
+    }}
+""")
+
+
+class PluginListContainer(QWidget):
+    def __init__(self, plugin_infos):
+        super().__init__()
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(8)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setAlignment(Qt.AlignTop)
+
+        for param_info in plugin_infos:
+            plugin_widget = Lv2PluginWidget(param_info)
+            plugin_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            content_layout.addWidget(plugin_widget)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addWidget(scroll)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, param_data):
+        super().__init__()
+        self.setWindowTitle("LV2 Select Plugin")
+        self.setFixedSize(900, 545)
+
+        self.param_objs = []
+
+        # for p in param_data:
+        #     self.param_objs.append(Lv2PluginWidget(p))
+
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        layout.addWidget(PluginListContainer(param_data))
+
+        # for param_obj in self.param_objs:
+        #     layout.addWidget(param_obj)
+
+    def __init__EX(self, param_data):
         super().__init__()
         self.setWindowTitle("LV2 Parametre Testi")
         self.resize(250, 350)
@@ -153,7 +263,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central_widget)
 
         for param_obj in self.param_objs:
-            layout.addWidget(param_obj.widget)
+            layout.addWidget(param_obj)
 
 
 if __name__ == "__main__":
@@ -170,84 +280,154 @@ if __name__ == "__main__":
 
     samples = [
         {
-            "port_index": 0,
-            "symbol": "reduction",
-            "name": "Reduction amount",
-            "min_val": 0.0,
-            "max_val": 20.0,
-            "default_val": 10.0,
-            "current_val": 20.0,
-            "is_toggle": False,
+            "name": "Audio File",
+            "uri": "http://kxstudio.sf.net/carla/plugins/audiofile",
+            "category": "Utility Plugin",
         },
         {
-            "port_index": 1,
-            "symbol": "noise_scaling_type",
-            "name": "Type of reduction",
-            "min_val": 0.0,
-            "max_val": 2.0,
-            "default_val": 2.0,
-            "current_val": 2.0,
-            "is_toggle": False,
+            "name": "Audio Gain(Mono)",
+            "uri": "http://kxstudio.sf.net/carla/plugins/audiogain",
+            "category": "Utility Plugin",
         },
         {
-            "port_index": 2,
-            "symbol": "offset",
-            "name": "Reduction strength",
-            "min_val": 0.0,
-            "max_val": 24.0,
-            "default_val": 2.0,
-            "current_val": 2.0,
-            "is_toggle": False,
+            "name": "Audio Gain (Stereo)",
+            "uri": "http://kxstudio.sf.net/carla/plugins/audiogain_s",
+            "category": "Utility Plugin",
         },
         {
-            "port_index": 3,
-            "symbol": "postfilter",
-            "name": "Post-filter threshold",
-            "min_val": -10.0,
-            "max_val": 10.0,
-            "default_val": -10.0,
-            "current_val": -10.0,
-            "is_toggle": False,
+            "name": "Big Meter",
+            "uri": "http://kxstudio.sf.net/carla/plugins/bigmeter",
+            "category": "Utility Plugin",
         },
         {
-            "port_index": 4,
-            "symbol": "smoothing",
-            "name": "Smoothing",
-            "min_val": 0.0,
-            "max_val": 100.0,
-            "default_val": 0.0,
-            "current_val": 0.0,
-            "is_toggle": False,
+            "name": "Carla-Patchbay",
+            "uri": "http://kxstudio.sf.net/carla/plugins/carlapatchbay",
+            "category": "Plugin",
         },
         {
-            "port_index": 5,
-            "symbol": "whitening",
-            "name": "Residual whitening",
-            "min_val": 0.0,
-            "max_val": 100.0,
-            "default_val": 0.0,
-            "current_val": 0.0,
-            "is_toggle": False,
+            "name": "Carla-Patchbay (16chan)",
+            "uri": "http://kxstudio.sf.net/carla/plugins/carlapatchbay16",
+            "category": "Plugin",
         },
         {
-            "port_index": 6,
-            "symbol": "Residual_listen",
-            "name": "Residual listen",
-            "min_val": 0.0,
-            "max_val": 1.0,
-            "default_val": 0.0,
-            "current_val": 0.0,
-            "is_toggle": True,
+            "name": "Carla-Patchbay (32chan)",
+            "uri": "http://kxstudio.sf.net/carla/plugins/carlapatchbay32",
+            "category": "Plugin",
         },
         {
-            "port_index": 7,
-            "symbol": "bypass",
-            "name": "Bypass",
-            "min_val": 0.0,
-            "max_val": 1.0,
-            "default_val": 0.0,
-            "current_val": 0.0,
-            "is_toggle": True,
+            "name": "Carla-Patchbay (sidechain)",
+            "uri": "http://kxstudio.sf.net/carla/plugins/carlapatchbay3s",
+            "category": "Plugin",
+        },
+        {
+            "name": "Carla-Patchbay (64chan)",
+            "uri": "http://kxstudio.sf.net/carla/plugins/carlapatchbay64",
+            "category": "Plugin",
+        },
+        {
+            "name": "Carla-Patchbay (CV)",
+            "uri": "http://kxstudio.sf.net/carla/plugins/carlapatchbaycv",
+            "category": "Plugin",
+        },
+        {
+            "name": "Carla-Rack",
+            "uri": "http://kxstudio.sf.net/carla/plugins/carlarack",
+            "category": "Plugin",
+        },
+        {
+            "name": "LFO",
+            "uri": "http://kxstudio.sf.net/carla/plugins/lfo",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Channel A/B",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midichanab",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Channel Filter",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midichanfilter",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Channelize",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midichannelize",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI File",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midifile",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Gain",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midigain",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Join",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midijoin",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Pattern",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midipattern",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Split",
+            "uri": "http://kxstudio.sf.net/carla/plugins/midisplit",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "MIDI Transpose",
+            "uri": "http://kxstudio.sf.net/carla/plugins/miditranspose",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "LSP A/B Tester x2 Mono",
+            "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x2_mono",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "LSP A/B Tester x2 Stereo",
+            "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x2_stereo",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "LSP A/B Tester x4 Mono",
+            "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x4_mono",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "LSP A/B Tester x4 Stereo",
+            "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x4_stereo",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "LSP A/B Tester x8 Mono",
+            "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x8_mono",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "LSP A/B Tester x8 Stereo",
+            "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x8_stereo",
+            "category": "Utility Plugin",
+        },
+        {
+            "name": "LSP Artistic Delay Mono",
+            "uri": "http://lsp-plug.in/plugins/lv2/art_delay_mono",
+            "category": "Delay Plugin",
+        },
+        {
+            "name": "LSP Artistic Delay Stereo",
+            "uri": "http://lsp-plug.in/plugins/lv2/art_delay_stereo",
+            "category": "Delay Plugin",
+        },
+        {
+            "name": "LSP Autogain Mono",
+            "uri": "http://lsp-plug.in/plugins/lv2/autogain_mono",
+            "category": "Envelope Plugin",
         },
     ]
 
