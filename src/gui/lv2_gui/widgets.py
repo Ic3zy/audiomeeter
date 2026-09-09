@@ -130,6 +130,9 @@ class Lv2ParamWidget:
         print(f"[{self.param_name}] Yeni Değer: {value}")
         self.value_label.setText(f"{value}")
 
+        for callback in self.value_changed_callbacks:
+            callback(value)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, param_data):

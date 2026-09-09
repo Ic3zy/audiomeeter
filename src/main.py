@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument("--no-config", action="store_true")
     parser.add_argument("--reset-config", action="store_true")
     parser.add_argument("--no-gui", action="store_true")
+    parser.add_argument("--no-backend", action="store_true")
     return parser.parse_args()
 
 
@@ -25,14 +26,17 @@ def main():
     QApplication.setDesktopFileName("audiomeeter")
     app = QApplication()
 
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "AudioMeeter_Icon.png")
+    icon_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "assets", "AudioMeeter_Icon.png"
+    )
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    engine = Engine()
+    if not args.no_backend:
+        engine = Engine()
 
     if not args.no_gui:
         window = Window()
@@ -42,7 +46,8 @@ def main():
 
     async def initialize():
         await asyncio.sleep(0.01)
-        await engine.run()
+        if not args.no_backend:
+            await engine.run()
         await asyncio.sleep(0.1)
 
         if args.reset_config:
