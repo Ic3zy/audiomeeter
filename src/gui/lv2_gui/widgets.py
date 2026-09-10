@@ -12,6 +12,16 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QGraphicsDropShadowEffect,
 )
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QFrame,
+)
 
 from PySide6.QtWidgets import QScrollArea, QSizePolicy
 
@@ -21,6 +31,13 @@ colors = {
     "plugin_border": "#0e5a63",
     "plugin_border_hover": "#2dd4c8",
     "plugin_label": "#d6f5f5",
+    "sidebar_bg": "#07171a",
+    "device_bg": "#0c2c31",
+    "device_bg_hover": "#123a41",
+    "device_bg_selected": "#0e5a63",
+    "device_border_selected": "#2dd4c8",
+    "device_text": "#cfeef0",
+    "device_text_selected": "#ffffff",
 }
 
 
@@ -223,16 +240,203 @@ class PluginListContainer(QWidget):
         outer_layout.addWidget(scroll)
 
 
+class DeviceWidget(QWidget):
+    clicked = Signal(str)
+
+    def __init__(self, device_name):
+        super().__init__()
+        self.device_name = device_name
+        self.selected = False
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(42)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        self.label = QLabel(device_name)
+        self.label.setStyleSheet(f"""
+            QLabel {{
+                color: {colors["device_text"]};
+                font-size: 12px;
+                font-weight: 500;
+                background: transparent;
+                border: none;
+            }}
+        """)
+
+        layout = QHBoxLayout(self)
+        layout.setSpacing(0)
+        layout.setContentsMargins(14, 0, 10, 0)
+        layout.addWidget(self.label)
+
+        self._apply_style()
+
+    def _apply_style(self):
+        if self.selected:
+            self.setStyleSheet(f"""
+                DeviceWidget {{
+                    background-color: {colors["device_bg_selected"]};
+                    border: none;
+                    border-left: 3px solid {colors["device_border_selected"]};
+                    border-radius: 4px;
+                }}
+            """)
+            self.label.setStyleSheet(f"""
+                QLabel {{
+                    color: {colors["device_text_selected"]};
+                    font-size: 12px;
+                    font-weight: 600;
+                    background: transparent;
+                    border: none;
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                DeviceWidget {{
+                    background-color: {colors["device_bg"]};
+                    border: none;
+                    border-left: 3px solid transparent;
+                    border-radius: 4px;
+                }}
+                DeviceWidget:hover {{
+                    background-color: {colors["device_bg_hover"]};
+                }}
+            """)
+            self.label.setStyleSheet(f"""
+                QLabel {{
+                    color: {colors["device_text"]};
+                    font-size: 12px;
+                    font-weight: 500;
+                    background: transparent;
+                    border: none;
+                }}
+            """)
+
+    def set_selected(self, value: bool):
+        self.selected = value
+        self._apply_style()
+
+    def mousePressEvent(self, event):
+        self.clicked.emit(self.device_name)
+        super().mousePressEvent(event)
+
+
+class DevicesContainer(QWidget):
+    device_selected = Signal(str)
+
+    def __init__(self, param_data):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFixedWidth(220)
+        self.setStyleSheet(f"background-color: {colors['sidebar_bg']};")
+
+        self.device_widgets = []
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setSpacing(0)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        title = QLabel("DEVICES")
+        title.setStyleSheet(f"""
+            QLabel {{
+                color: {colors["plugin_label"]};
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 1.5px;
+                background: transparent;
+                padding: 14px 14px 10px 14px;
+                border: none;
+            }}
+        """)
+        outer_layout.addWidget(title)
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setStyleSheet(
+            f"background-color: {colors['plugin_border']}; max-height: 1px; border: none;"
+        )
+        outer_layout.addWidget(divider)
+
+        content = QWidget()
+        content.setAttribute(Qt.WA_StyledBackground, True)
+        content.setStyleSheet("background: transparent;")
+        self.list_layout = QVBoxLayout(content)
+        self.list_layout.setSpacing(4)
+        self.list_layout.setContentsMargins(8, 10, 8, 10)
+        self.list_layout.setAlignment(Qt.AlignTop)
+
+        for name in param_data:
+            dw = DeviceWidget(name)
+            dw.clicked.connect(self._on_device_clicked)
+            self.device_widgets.append(dw)
+            self.list_layout.addWidget(dw)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet(f"""
+            QScrollArea {{ background: transparent; border: none; }}
+            QScrollBar:vertical {{
+                background: transparent;
+                width: 8px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {colors["plugin_border"]};
+                border-radius: 4px;
+                min-height: 24px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {colors["device_border_selected"]};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
+
+        outer_layout.addWidget(scroll)
+
+        if self.device_widgets:
+            self.device_widgets[0].set_selected(True)
+
+    def _on_device_clicked(self, device_name):
+        for dw in self.device_widgets:
+            dw.set_selected(dw.device_name == device_name)
+        self.device_selected.emit(device_name)
+
+
+class MainWidget(QWidget):
+    def __init__(self, param_data):
+        super().__init__()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, param_data):
+        super().__init__()
+        self.setWindowTitle("AudioMeeter")
+        l = ["A1", "A2", "A3"]
+
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+
+        self.devices_container = DevicesContainer(l)
+
+        self.layout.addWidget(self.devices_container)
+
+        central_widget.setLayout(self.layout)
+
+    def __init__EX(self, param_data):
         super().__init__()
         self.setWindowTitle("LV2 Select Plugin")
         self.setFixedSize(900, 545)
 
         self.param_objs = []
-
-        # for p in param_data:
-        #     self.param_objs.append(Lv2PluginWidget(p))
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -241,9 +445,6 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         layout.addWidget(PluginListContainer(param_data))
-
-        # for param_obj in self.param_objs:
-        #     layout.addWidget(param_obj)
 
     def __init__EX(self, param_data):
         super().__init__()
