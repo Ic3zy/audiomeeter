@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
+    QVBoxLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -10,20 +11,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QCheckBox,
-    QGraphicsDropShadowEffect,
-)
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QScrollArea,
     QSizePolicy,
     QFrame,
+    QGraphicsDropShadowEffect,
+    QScrollArea,
 )
-
-from PySide6.QtWidgets import QScrollArea, QSizePolicy
+from PySide6.QtCore import Qt, Signal
 
 colors = {
     "plugin_wd_bg": "#033d43",
@@ -407,64 +400,83 @@ class DevicesContainer(QWidget):
         self.device_selected.emit(device_name)
 
 
+class TitlBarWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(f"background-color: {colors['device_bg']};")
+        self.setFixedHeight(42)
+
+        layout = QHBoxLayout(self)
+        self.setLayout(layout)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+
+class GeneralWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(f"background-color: {colors['sidebar_bg']};")
+        layout = QVBoxLayout(self)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.label = QLabel("General")
+        layout.addWidget(self.label)
+
+        self.setLayout(layout)
+
+
+class GeneralContainer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(f"background-color: {colors['sidebar_bg']};")
+
+        self.layout = QVBoxLayout(self)
+
+        self.title_bar = TitlBarWidget()
+        self.g_widget = GeneralWidget()
+
+        self.layout.addWidget(self.title_bar)
+        self.layout.addWidget(self.g_widget)
+
+        self.setLayout(self.layout)
+
+
 class MainWidget(QWidget):
-    def __init__(self, param_data):
+    def __init__(self):
         super().__init__()
-
-
-class MainWindow(QMainWindow):
-    def __init__(self, param_data):
-        super().__init__()
-        self.setWindowTitle("AudioMeeter")
         l = ["A1", "A2", "A3"]
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setSpacing(0)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(0)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
         self.devices_container = DevicesContainer(l)
+        self.title_bar = TitlBarWidget()
+        self.general_container = GeneralContainer()
 
+        # self.layout.addWidget(self.title_bar)
         self.layout.addWidget(self.devices_container)
 
-        central_widget.setLayout(self.layout)
+        self.main_layout.addLayout(self.layout)
+        self.main_layout.addWidget(self.general_container, 0)
 
-    def __init__EX(self, param_data):
+        self.setLayout(self.main_layout)
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, param_data):
         super().__init__()
-        self.setWindowTitle("LV2 Select Plugin")
-        self.setFixedSize(900, 545)
-
-        self.param_objs = []
-
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        layout.addWidget(PluginListContainer(param_data))
-
-    def __init__EX(self, param_data):
-        super().__init__()
-        self.setWindowTitle("LV2 Parametre Testi")
-        self.resize(250, 350)
-
-        self.param_objs = []
-        if isinstance(param_data, dict):
-            self.param_objs.append(Lv2ParamWidget(param_data))
-
-        elif isinstance(param_data, list):
-            for param in param_data:
-                self.param_objs.append(Lv2ParamWidget(param))
-
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-
-        for param_obj in self.param_objs:
-            layout.addWidget(param_obj)
+        self.setWindowTitle("AudioMeeter")
+        self.central_widget = MainWidget()
+        self.setCentralWidget(self.central_widget)
 
 
 if __name__ == "__main__":
