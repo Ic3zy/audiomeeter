@@ -536,11 +536,35 @@ class TitlBarWidget(QWidget):
         self.setFixedHeight(42)
 
         layout = QHBoxLayout(self)
-        layout.addWidget(ButtonWidget("Add", width=50, font_size=11), 0, Qt.AlignLeft)
+        self.add_button = ButtonWidget("Add", width=50, font_size=11)
+        self.add_button.clicked.connect(self.add_clicked)
+
+        layout.addWidget(self.add_button, 0, Qt.AlignLeft)
 
         self.setLayout(layout)
         layout.setSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
+
+    def add_clicked(self):
+        print("Add clicked")
+        if instance := GeneralContainer.get():
+            plugin_infos = [
+                {
+                    "name": "Audio File",
+                    "uri": "http://kxstudio.sf.net/carla/plugins/audiofile",
+                    "category": "Utility Plugin",
+                },
+                {
+                    "name": "Audio Gain(Mono)",
+                    "uri": "http://kxstudio.sf.net/carla/plugins/audiogain",
+                    "category": "Utility Plugin",
+                },
+            ]
+            pl = PluginListContainer(plugin_infos)
+            instance.clear()
+            instance.add(pl)
+        else:
+            print("GeneralContainer instance not found")
 
 
 class GeneralWidget(QWidget):
@@ -558,6 +582,8 @@ class GeneralWidget(QWidget):
         self.spinner = SpinnerWidget()
         self.label = QLabel("Loading, takes a few seconds...")
 
+        self._layout = layout
+
         layout.addStretch()
         layout.addWidget(self.spinner, 0, Qt.AlignCenter)
         layout.addWidget(self.label, 0, Qt.AlignCenter)
@@ -573,22 +599,56 @@ class GeneralWidget(QWidget):
         self.loading = False
         self.spinner.stop()
 
+    def add(self, widget):
+        self._layout.addWidget(widget)
+
+    def clear(self):
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+
+            if widget := item.widget():
+                widget.deleteLater()
+
 
 class GeneralContainer(QWidget):
+    _general_container_instance = None
+
+    @classmethod
+    def get(cls):
+        return cls._general_container_instance
+
+    @classmethod
+    def set_instance(cls, instance):
+        cls._general_container_instance = instance
+
     def __init__(self):
         super().__init__()
+
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet(f"background-color: {colors['sidebar_bg']};")
 
         self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
 
         self.title_bar = TitlBarWidget()
         self.g_widget = GeneralWidget()
+
+        self.g_layout = QVBoxLayout(self.g_widget)
+        self.g_layout.setSpacing(0)
+        self.g_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.g_widget.setLayout(self.g_layout)
 
         self.layout.addWidget(self.title_bar)
         self.layout.addWidget(self.g_widget)
 
         self.setLayout(self.layout)
+
+    def clear(self):
+        self.g_widget.clear()
+
+    def add(self, widget):
+        self.g_widget.add(widget)
 
 
 class MainWidget(QWidget):
@@ -604,11 +664,12 @@ class MainWidget(QWidget):
         self.layout.setSpacing(0)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
+        self.general_container = GeneralContainer()
+        GeneralContainer.set_instance(self.general_container)
+
         self.devices_container = DevicesContainer(l)
         self.title_bar = TitlBarWidget()
-        self.general_container = GeneralContainer()
 
-        # self.layout.addWidget(self.title_bar)
         self.layout.addWidget(self.devices_container)
 
         self.main_layout.addLayout(self.layout)
