@@ -1,6 +1,6 @@
 import sys
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPainter, QColor, QPen
+from PySide6.QtCore import Qt, Signal, QTimer, QMimeData, QPoint
+from PySide6.QtGui import QPainter, QColor, QPen, QDrag, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QVBoxLayout,
@@ -528,6 +528,319 @@ class SpinnerWidget(QWidget):
         painter.drawArc(rect, 0, 100 * 16)
 
 
+class DragHandle(QLabel):
+    def __init__(self, owner_widget):
+        super().__init__("⋮")
+        self.owner_widget = owner_widget
+        self.setFixedWidth(22)
+        self.setAlignment(Qt.AlignCenter)
+        self.setCursor(Qt.OpenHandCursor)
+        self.setStyleSheet(f"""
+            QLabel {{
+                color: {colors["plugin_border_hover"]};
+                font-size: 15px;
+                font-weight: bold;
+                background: transparent;
+            }}
+        """)
+        self._press_pos = None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._press_pos = event.position().toPoint()
+
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._press_pos is None:
+            return
+
+        moved = (event.position().toPoint() - self._press_pos).manhattanLength()
+        if moved < QApplication.startDragDistance():
+            return
+
+        self._press_pos = None
+        self.setCursor(Qt.ClosedHandCursor)
+        self.owner_widget.start_drag()
+        self.setCursor(Qt.OpenHandCursor)
+
+    def mouseReleaseEvent(self, event):
+        self._press_pos = None
+        super().mouseReleaseEvent(event)
+
+
+class ActivePluginWidget(QWidget):
+    def __init__(self, param_info):
+        super().__init__()
+        self.param_info = param_info
+        self.param_name = param_info["name"]
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.init_widget()
+
+    def init_widget(self):
+        outer = QHBoxLayout(self)
+        outer.setSpacing(2)
+        outer.setContentsMargins(2, 10, 14, 10)
+
+        self.setFixedHeight(42)
+
+        self.handle = DragHandle(self)
+        outer.addWidget(self.handle)
+
+        inner = QVBoxLayout()
+        inner.setSpacing(6)
+        inner.setContentsMargins(8, 0, 0, 0)
+
+        label = QLabel(self.param_name)
+        label.setStyleSheet(f"""
+            QLabel {{
+                color: {colors["plugin_label"]};
+                font-size: 13px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                background: transparent;
+                border: none;
+            }}
+        """)
+        inner.addWidget(label)
+        outer.addLayout(inner, 1)
+
+        self._shadow = QGraphicsDropShadowEffect(self)
+        self._shadow.setBlurRadius(18)
+        self._shadow.setXOffset(0)
+        self._shadow.setYOffset(3)
+        self._shadow.setColor(QColor(0, 0, 0, 160))
+        self.setGraphicsEffect(self._shadow)
+
+        self._apply_style()
+
+    def _apply_style(self):
+        self.setStyleSheet(f"""
+            ActivePluginWidget {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {colors["plugin_wd_bg"]},
+                    stop:1 {colors["plugin_wd_bg_bottom"]}
+                );
+                border: 1px solid {colors["plugin_border"]};
+                border-radius: 10px;
+            }}
+            ActivePluginWidget:hover {{
+                border: 1px solid {colors["plugin_border_hover"]};
+            }}
+        """)
+
+    def start_drag(self):
+        drop_area = self.parent()
+        if drop_area is None or not hasattr(drop_area, "handle_external_drop"):
+            return
+
+        mime = QMimeData()
+        mime.setText(self.param_name)
+
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+
+        pixmap = self.grab()
+        ghost = QPixmap(pixmap.size())
+        ghost.fill(Qt.transparent)
+        painter = QPainter(ghost)
+        painter.setOpacity(0.75)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+
+        drag.setPixmap(ghost)
+        drag.setHotSpot(QPoint(20, pixmap.height() // 2))
+
+        # self.setGraphicsEffect(None)
+        self.hide()
+
+        drop_area.start_reorder(self.param_name)
+        drag.exec(Qt.MoveAction)
+        drop_area.end_reorder()
+
+        self.show()
+        # self.setGraphicsEffect(self._shadow)
+
+
+class PluginDropArea(QWidget):
+    order_changed = Signal(list)
+
+    def __init__(self):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet("background: transparent;")
+        self.setAcceptDrops(True)
+
+        self.layout_ = QVBoxLayout(self)
+        self.layout_.setSpacing(10)
+        self.layout_.setContentsMargins(20, 16, 20, 16)
+        self.layout_.setAlignment(Qt.AlignTop)
+
+        self.plugin_widgets = {}
+        self._pending_index = None
+
+        self._indicator = QFrame(self)
+        self._indicator.setFixedHeight(3)
+        self._indicator.setStyleSheet(f"""
+            background-color: {colors["plugin_border_hover"]};
+            border-radius: 1px;
+        """)
+        self._indicator.hide()
+
+    def clear_plugins(self):
+        for pw in list(self.plugin_widgets.values()):
+            self.layout_.removeWidget(pw)
+            pw.setParent(None)
+            pw.deleteLater()
+
+        self.plugin_widgets.clear()
+
+    def set_plugins(self, plugin_infos):
+        self.clear_plugins()
+
+        for info in plugin_infos:
+            self.add_plugin(info, emit_signal=False)
+
+    def add_plugin(self, param_info, emit_signal=True):
+        pw = ActivePluginWidget(param_info)
+        pw.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        self.plugin_widgets[pw.param_name] = pw
+        self.layout_.addWidget(pw)
+
+        if emit_signal:
+            self.order_changed.emit(self.current_order())
+
+    def remove_plugin(self, param_name):
+        pw = self.plugin_widgets.pop(param_name, None)
+
+        if pw is None:
+            return
+
+        self.layout_.removeWidget(pw)
+
+        pw.setParent(None)
+        pw.deleteLater()
+
+        self.order_changed.emit(self.current_order())
+
+    def current_order(self):
+        return list(self.plugin_widgets.keys())
+
+    def is_empty(self):
+        return len(self.plugin_widgets) == 0
+
+    def start_reorder(self, param_name):
+        self._pending_index = None
+
+    def end_reorder(self):
+        self._pending_index = None
+        self._indicator.hide()
+
+    def handle_external_drop(self):
+        return True
+
+    def _visible_plugin_widgets(self):
+        result = []
+
+        for i in range(self.layout_.count()):
+            item = self.layout_.itemAt(i)
+            w = item.widget()
+
+            if w is not None and isinstance(w, ActivePluginWidget) and w.isVisible():
+                result.append(w)
+
+        return result
+
+    def _index_for_y(self, y):
+        widgets = self._visible_plugin_widgets()
+
+        for i, w in enumerate(widgets):
+            mid = w.y() + w.height() / 2
+            if y < mid:
+                return i
+
+        return len(widgets)
+
+    def dragEnterEvent(self, event):
+        if (
+            event.mimeData().hasText()
+            and event.mimeData().text() in self.plugin_widgets
+        ):
+            event.acceptProposedAction()
+            self._indicator.setFixedWidth(self.width() - 40)
+            self._indicator.show()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if not (
+            event.mimeData().hasText()
+            and event.mimeData().text() in self.plugin_widgets
+        ):
+            event.ignore()
+            return
+
+        pos_y = event.position().toPoint().y()
+        index = self._index_for_y(pos_y)
+        widgets = self._visible_plugin_widgets()
+
+        if index >= len(widgets):
+            target_y = widgets[-1].y() + widgets[-1].height() + 5 if widgets else 20
+        else:
+            target_y = widgets[index].y() - 6
+
+        self._indicator.move(20, int(target_y))
+        self._pending_index = index
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        self._indicator.hide()
+
+    def dropEvent(self, event):
+        self._indicator.hide()
+
+        if not event.mimeData().hasText():
+            event.ignore()
+            return
+
+        param_name = event.mimeData().text()
+        pw = self.plugin_widgets.get(param_name)
+        if pw is None:
+            event.ignore()
+            return
+
+        target_index = self._pending_index
+        if target_index is None:
+            event.ignore()
+            return
+
+        self.layout_.removeWidget(pw)
+        visible_after_removal = self._visible_plugin_widgets()
+        insert_at = min(target_index, len(visible_after_removal))
+
+        if insert_at >= len(visible_after_removal):
+            self.layout_.addWidget(pw)
+        else:
+            ref_widget = visible_after_removal[insert_at]
+            ref_layout_index = self.layout_.indexOf(ref_widget)
+            self.layout_.insertWidget(ref_layout_index, pw)
+
+        ordered = {}
+        for i in range(self.layout_.count()):
+            w = self.layout_.itemAt(i).widget()
+
+            if isinstance(w, ActivePluginWidget):
+                ordered[w.param_name] = w
+
+        self.plugin_widgets = ordered
+
+        self._pending_index = None
+        event.acceptProposedAction()
+        self.order_changed.emit(self.current_order())
+
+
 class TitlBarWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -560,7 +873,9 @@ class TitlBarWidget(QWidget):
                     "category": "Utility Plugin",
                 },
             ]
-            pl = PluginListContainer(plugin_infos)
+            # pl = PluginListContainer(plugin_infos)
+            pl = PluginDropArea()
+            pl.set_plugins(plugin_infos)
             instance.clear()
             instance.add(pl)
         else:
@@ -686,7 +1001,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
 
 
-if __name__ == "__main__":
+def run():
     # sample_dict = {
     #     "port_index": 0,
     #     "symbol": "reduction",
@@ -855,3 +1170,7 @@ if __name__ == "__main__":
     window = MainWindow(samples)
     window.show()
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    run()

@@ -7,6 +7,7 @@ from PySide6.QtGui import QIcon
 from qasync import QEventLoop
 
 from gui import Window
+from gui.lv2_gui.widgets import MainWindow as lv2Window
 from core import Engine
 
 from base import Ctx
@@ -18,6 +19,7 @@ def parse_args():
     parser.add_argument("--reset-config", action="store_true")
     parser.add_argument("--no-gui", action="store_true")
     parser.add_argument("--no-backend", action="store_true")
+    parser.add_argument("--test-settings-panel", action="store_true")
     return parser.parse_args()
 
 
@@ -39,7 +41,11 @@ def main():
         engine = Engine()
 
     if not args.no_gui:
-        window = Window()
+        if args.test_settings_panel:
+            window = lv2Window([])
+        else:
+            window = Window()
+
         window.show()
 
     task = loop.create_future()
