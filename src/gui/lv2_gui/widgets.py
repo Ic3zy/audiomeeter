@@ -1,6 +1,6 @@
 import sys
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QPainter, QColor, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QVBoxLayout,
@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QScrollArea,
 )
-from PySide6.QtCore import Qt, Signal
 
 colors = {
     "plugin_wd_bg": "#033d43",
@@ -400,14 +399,145 @@ class DevicesContainer(QWidget):
         self.device_selected.emit(device_name)
 
 
+class ButtonWidget(QWidget):
+    clicked = Signal()
+
+    def __init__(self, text, width=None, height=42, font_size=12):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setCursor(Qt.PointingHandCursor)
+
+        self.setFixedHeight(height)
+        if width:
+            self.setFixedWidth(width)
+            self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        else:
+            self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        self._pressed = False
+
+        self.label = QLabel(text)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setStyleSheet(f"""
+            QLabel {{
+                color: {colors["device_text"]};
+                font-size: {font_size}px;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                background: transparent;
+                border: none;
+            }}
+        """)
+
+        layout = QHBoxLayout(self)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.label, 0, Qt.AlignCenter)
+
+        self._apply_style()
+
+    def _apply_style(self):
+        bg = colors["device_bg_selected"] if self._pressed else colors["device_bg"]
+        border = (
+            colors["device_border_selected"]
+            if self._pressed
+            else colors["plugin_border"]
+        )
+        self.setStyleSheet(f"""
+            ButtonWidget {{
+                background-color: {bg};
+                border: 1px solid {border};
+                border-radius: 6px;
+            }}
+            ButtonWidget:hover {{
+                background-color: {colors["device_bg_hover"]};
+                border: 1px solid {colors["device_border_selected"]};
+            }}
+        """)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._pressed = True
+            self._apply_style()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            was_pressed = self._pressed
+            self._pressed = False
+            self._apply_style()
+            if was_pressed and self.rect().contains(event.pos()):
+                self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
+class SpinnerWidget(QWidget):
+    def __init__(
+        self,
+        size=40,
+        line_width=4,
+        color=colors["device_border_selected"],
+        track_color=colors["plugin_border"],
+        speed=8,
+    ):
+        super().__init__()
+        self.setFixedSize(size, size)
+        self._angle = 0
+        self._line_width = line_width
+        self._color = QColor(color)
+        self._track_color = QColor(track_color)
+        self._speed = speed
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._rotate)
+        self._timer.start(16)  # ~60 FPS
+
+    def _rotate(self):
+        self._angle = (self._angle + self._speed) % 360
+        self.update()
+
+    def start(self):
+        self._timer.start(16)
+
+    def stop(self):
+        self._timer.stop()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = self.rect().adjusted(
+            self._line_width, self._line_width, -self._line_width, -self._line_width
+        )
+
+        painter.translate(self.rect().center())
+        painter.rotate(self._angle)
+        painter.translate(-self.rect().center())
+
+        bg_pen = QPen(self._track_color)
+        bg_pen.setWidth(self._line_width)
+        bg_pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(bg_pen)
+        painter.drawArc(rect, 0, 360 * 16)
+
+        fg_pen = QPen(self._color)
+        fg_pen.setWidth(self._line_width)
+        fg_pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(fg_pen)
+        painter.drawArc(rect, 0, 100 * 16)
+
+
 class TitlBarWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet(f"background-color: {colors['device_bg']};")
+        self.setStyleSheet(f"background-color: {colors['sidebar_bg']};")
         self.setFixedHeight(42)
 
         layout = QHBoxLayout(self)
+        layout.addWidget(ButtonWidget("Add", width=50, font_size=11), 0, Qt.AlignLeft)
+
         self.setLayout(layout)
         layout.setSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -416,16 +546,32 @@ class TitlBarWidget(QWidget):
 class GeneralWidget(QWidget):
     def __init__(self):
         super().__init__()
+
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet(f"background-color: {colors['sidebar_bg']};")
+
         layout = QVBoxLayout(self)
-        layout.setSpacing(0)
+        layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.label = QLabel("General")
-        layout.addWidget(self.label)
+        self.loading = True
+        self.spinner = SpinnerWidget()
+        self.label = QLabel("Loading, takes a few seconds...")
+
+        layout.addStretch()
+        layout.addWidget(self.spinner, 0, Qt.AlignCenter)
+        layout.addWidget(self.label, 0, Qt.AlignCenter)
+        layout.addStretch()
 
         self.setLayout(layout)
+
+    def start_loading(self):
+        self.loading = True
+        self.spinner.start()
+
+    def stop_loading(self):
+        self.loading = False
+        self.spinner.stop()
 
 
 class GeneralContainer(QWidget):
