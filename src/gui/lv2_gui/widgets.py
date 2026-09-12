@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
     QScrollArea,
+    QPushButton,
 )
 
 colors = {
@@ -189,6 +190,7 @@ class Lv2PluginWidget(QWidget):
         shadow.setYOffset(3)
         shadow.setColor(QColor(0, 0, 0, 160))
         self.setGraphicsEffect(shadow)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.setStyleSheet(f"""
     Lv2PluginWidget {{
@@ -204,6 +206,38 @@ class Lv2PluginWidget(QWidget):
         border: 1px solid {colors["plugin_border_hover"]};
     }}
 """)
+
+
+class CancelButton(QPushButton):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        self.setFixedSize(70, 30)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setText("Cancel")
+
+        self.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: 1px solid #3a3a3a;
+                border-radius: 6px;
+                color: #aaaaaa;
+                font-size: 13px;
+                font-weight: 500;
+            }
+
+            QPushButton:hover {
+                background: rgba(255, 70, 70, 25);
+                border-color: #a84444;
+                color: #ff6666;
+            }
+
+            QPushButton:pressed {
+                background: rgba(255, 70, 70, 45);
+                border-color: #c44a4a;
+                color: #ff4d4d;
+            }
+        """)
 
 
 class PluginListContainer(QWidget):
@@ -230,6 +264,33 @@ class PluginListContainer(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(scroll)
+
+        self.cancel_button = CancelButton(self)
+        self.cancel_button.clicked.connect(self.cancel_clicked)
+
+        self.cancel_button.move(
+            self.width() - self.cancel_button.width() - 10,
+            self.height() - self.cancel_button.height() - 10,
+        )
+
+        self.cancel_button_callback = None
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        self.cancel_button.move(
+            self.width() - self.cancel_button.width() - 10,
+            self.height() - self.cancel_button.height() - 10,
+        )
+
+    def set_cancel_callback(self, callback):
+        self.cancel_button_callback = callback
+
+    def cancel_clicked(self):
+        if self.cancel_button_callback is not None:
+            self.cancel_button_callback()
+
+        print("Cancel clicked")
 
 
 class DeviceWidget(QWidget):
@@ -873,11 +934,13 @@ class TitlBarWidget(QWidget):
                     "category": "Utility Plugin",
                 },
             ]
-            # pl = PluginListContainer(plugin_infos)
-            pl = PluginDropArea()
-            pl.set_plugins(plugin_infos)
+            pl = PluginListContainer(plugin_infos)
+            # pl = PluginDropArea()
+            # pl.set_plugins(plugin_infos)
             instance.clear()
             instance.add(pl)
+
+            pl.set_cancel_callback(lambda: instance.restore())
         else:
             print("GeneralContainer instance not found")
 
@@ -889,22 +952,36 @@ class GeneralWidget(QWidget):
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet(f"background-color: {colors['sidebar_bg']};")
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
-
         self.loading = True
+
         self.spinner = SpinnerWidget()
         self.label = QLabel("Loading, takes a few seconds...")
 
-        self._layout = layout
+        # GeneralWidget -> widget
+        self._outer_layout = QVBoxLayout(self)
+        self._outer_layout.setContentsMargins(0, 0, 0, 0)
+        self._outer_layout.setSpacing(0)
 
-        layout.addStretch()
-        layout.addWidget(self.spinner, 0, Qt.AlignCenter)
-        layout.addWidget(self.label, 0, Qt.AlignCenter)
-        layout.addStretch()
+        self.widget = QWidget()
+        self._layout = self.create_clean_layout()
 
-        self.setLayout(layout)
+        self.widget.setLayout(self._layout)
+        self._outer_layout.addWidget(self.widget)
+
+        self._layout.addStretch()
+        self._layout.addWidget(self.spinner, 0, Qt.AlignCenter)
+        self._layout.addWidget(self.label, 0, Qt.AlignCenter)
+        self._layout.addStretch()
+
+        self.ex_widget = None
+
+    def create_clean_layout(self):
+        layout = QVBoxLayout()
+
+        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        return layout
 
     def start_loading(self):
         self.loading = True
@@ -918,11 +995,38 @@ class GeneralWidget(QWidget):
         self._layout.addWidget(widget)
 
     def clear(self):
-        while self._layout.count():
-            item = self._layout.takeAt(0)
+        current_widget = self.widget
 
-            if widget := item.widget():
-                widget.deleteLater()
+        self._outer_layout.removeWidget(current_widget)
+        current_widget.hide()
+        current_widget.setParent(None)
+
+        self.ex_widget = current_widget
+
+        self.widget = QWidget()
+        self._layout = self.create_clean_layout()
+
+        self.widget.setLayout(self._layout)
+        self._outer_layout.addWidget(self.widget)
+
+        self.widget.show()
+
+    def restore(self):
+        if self.ex_widget is None:
+            return
+
+        current_widget = self.widget
+
+        self._outer_layout.removeWidget(current_widget)
+        current_widget.deleteLater()
+
+        self.widget = self.ex_widget
+        self.ex_widget = None
+
+        self._outer_layout.addWidget(self.widget)
+
+        self._layout = self.widget.layout()
+        self.widget.show()
 
 
 class GeneralContainer(QWidget):
@@ -964,6 +1068,9 @@ class GeneralContainer(QWidget):
 
     def add(self, widget):
         self.g_widget.add(widget)
+
+    def restore(self):
+        self.g_widget.restore()
 
 
 class MainWidget(QWidget):
