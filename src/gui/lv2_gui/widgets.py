@@ -193,19 +193,32 @@ class Lv2PluginWidget(QWidget):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.setStyleSheet(f"""
-    Lv2PluginWidget {{
-        background: qlineargradient(
-            x1:0, y1:0, x2:0, y2:1,
-            stop:0 {colors["plugin_wd_bg"]},
-            stop:1 {colors["plugin_wd_bg_bottom"]}
-        );
-        border: 1px solid {colors["plugin_border"]};
-        border-radius: 10px;
-    }}
-    Lv2PluginWidget:hover {{
-        border: 1px solid {colors["plugin_border_hover"]};
-    }}
-""")
+            Lv2PluginWidget {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {colors["plugin_wd_bg"]},
+                    stop:1 {colors["plugin_wd_bg_bottom"]}
+                );
+                border: 1px solid {colors["plugin_border"]};
+                border-radius: 10px;
+            }}
+            Lv2PluginWidget:hover {{
+                border: 1px solid {colors["plugin_border_hover"]};
+            }}
+        """)
+
+        self.click_callback = None
+
+    def on_click(self):
+        print("clicked")
+        if self.click_callback is not None:
+            self.click_callback(self)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.on_click()
+
+        super().mousePressEvent(event)
 
 
 class CancelButton(QPushButton):
@@ -253,6 +266,7 @@ class PluginListContainer(QWidget):
         for param_info in plugin_infos:
             plugin_widget = Lv2PluginWidget(param_info)
             plugin_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            plugin_widget.click_callback = self.on_select_plugin
             content_layout.addWidget(plugin_widget)
 
         scroll = QScrollArea()
@@ -291,6 +305,12 @@ class PluginListContainer(QWidget):
             self.cancel_button_callback()
 
         print("Cancel clicked")
+
+    def on_select_plugin(self, plugin_widget):
+        print(f"Selected plugin: {plugin_widget.param_name}")
+
+        if instance := GeneralContainer.get():
+            instance.restore()
 
 
 class DeviceWidget(QWidget):
@@ -957,7 +977,6 @@ class GeneralWidget(QWidget):
         self.spinner = SpinnerWidget()
         self.label = QLabel("Loading, takes a few seconds...")
 
-        # GeneralWidget -> widget
         self._outer_layout = QVBoxLayout(self)
         self._outer_layout.setContentsMargins(0, 0, 0, 0)
         self._outer_layout.setSpacing(0)
