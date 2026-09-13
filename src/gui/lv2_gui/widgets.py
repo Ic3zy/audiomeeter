@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QScrollArea,
     QPushButton,
+    QToolButton,
 )
 from base import Ctx
 from core import Lv2Core
@@ -697,17 +698,56 @@ class ActivePluginWidget(QWidget):
 
     def init_widget(self):
         outer = QHBoxLayout(self)
-        outer.setSpacing(2)
-        outer.setContentsMargins(2, 10, 14, 10)
+        outer.setSpacing(4)
+        outer.setContentsMargins(4, 10, 14, 10)
 
         self.setFixedHeight(42)
 
         self.handle = DragHandle(self)
         outer.addWidget(self.handle)
 
+        btn_style = f"""
+            QToolButton {{
+                background: transparent;
+                border: none;
+                border-radius: 4px;
+                color: {colors.get("plugin_label", "#CCCCCC")};
+                font-weight: bold;
+            }}
+            QToolButton:hover {{
+                background: rgba(255, 255, 255, 0.1);
+                color: #FFFFFF;
+            }}
+            QToolButton:pressed {{
+                background: rgba(255, 255, 255, 0.05);
+            }}
+        """
+
+        self.settings_btn = QToolButton(self)
+        self.settings_btn.setFixedSize(24, 24)
+        self.settings_btn.setText("🛠")
+        self.settings_btn.setStyleSheet(btn_style)
+        self.settings_btn.setToolTip("Settings")
+        self.settings_btn.clicked.connect(self.on_settings_clicked)
+        outer.addWidget(self.settings_btn)
+
+        self.delete_btn = QToolButton(self)
+        self.delete_btn.setFixedSize(24, 24)
+        self.delete_btn.setText("🗑")
+        self.delete_btn.setStyleSheet(f"""
+            {btn_style}
+            QToolButton:hover {{
+                background: rgba(235, 87, 87, 0.2);
+                color: #EB5757;
+            }}
+        """)
+        self.delete_btn.setToolTip("Delete")
+        self.delete_btn.clicked.connect(self.on_delete_clicked)
+        outer.addWidget(self.delete_btn)
+
         inner = QVBoxLayout()
         inner.setSpacing(6)
-        inner.setContentsMargins(8, 0, 0, 0)
+        inner.setContentsMargins(6, 0, 0, 0)
 
         label = QLabel(self.param_name)
         label.setStyleSheet(f"""
@@ -748,6 +788,12 @@ class ActivePluginWidget(QWidget):
             }}
         """)
 
+    def on_settings_clicked(self):
+        print(f"Ayarlar tıklandı: {self.param_name}")
+
+    def on_delete_clicked(self):
+        print(f"Sil tıklandı: {self.param_name}")
+
     def start_drag(self):
         drop_area = self.parent()
         if drop_area is None or not hasattr(drop_area, "handle_external_drop"):
@@ -770,7 +816,6 @@ class ActivePluginWidget(QWidget):
         drag.setPixmap(ghost)
         drag.setHotSpot(QPoint(20, pixmap.height() // 2))
 
-        # self.setGraphicsEffect(None)
         self.hide()
 
         drop_area.start_reorder(self.param_name)
@@ -778,7 +823,6 @@ class ActivePluginWidget(QWidget):
         drop_area.end_reorder()
 
         self.show()
-        # self.setGraphicsEffect(self._shadow)
 
 
 class PluginDropArea(QWidget):
