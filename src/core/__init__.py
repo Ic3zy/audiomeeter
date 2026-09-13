@@ -10,6 +10,7 @@ from setuptools import Extension
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 C_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "C", "audio_core"))
 WVOSD_C_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "C", "wayland-volume-osd"))
+LV2_C_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "C", "lv2-api"))
 
 # 1. Automatic build of C Shared Libraries if missing
 _libengine_path = os.path.join(C_DIR, "libengine.so")
@@ -70,6 +71,25 @@ wvosd_ext = Extension(
     language="c",
 )
 
+lv2_ext = Extension(
+    name="lv2",
+    sources=[
+        os.path.join(CURRENT_DIR, "lv2.pyx"),
+        os.path.join(LV2_C_DIR, "src", "lv2_manager.c"),
+    ],
+    include_dirs=[
+        os.path.join(LV2_C_DIR, "src", "include"),
+        "/usr/include/lilv-0",
+        "/usr/include/sratom-0",
+        "/usr/include/sord-0",
+        "/usr/include/serd-0",
+        "/usr/include/zix-0",
+    ],
+    libraries=["lilv-0", "m"],
+    language="c",
+)
+
+
 def _load_or_build_cython(module_name, pyx_file, extension_mod):
     so_path = pyxbuild.pyx_to_dll(
         pyx_file,
@@ -83,10 +103,17 @@ def _load_or_build_cython(module_name, pyx_file, extension_mod):
     spec.loader.exec_module(mod)
     return mod
 
-engine = _load_or_build_cython("engine", os.path.join(CURRENT_DIR, "engine.pyx"), engine_ext)
-wvosd = _load_or_build_cython("wvosd", os.path.join(CURRENT_DIR, "wvosd.pyx"), wvosd_ext)
+
+engine = _load_or_build_cython(
+    "engine", os.path.join(CURRENT_DIR, "engine.pyx"), engine_ext
+)
+wvosd = _load_or_build_cython(
+    "wvosd", os.path.join(CURRENT_DIR, "wvosd.pyx"), wvosd_ext
+)
+lv2 = _load_or_build_cython("lv2", os.path.join(CURRENT_DIR, "lv2.pyx"), lv2_ext)
 
 from .main import Engine
 from .devices import DevicesManager
+from .lv2c import Lv2Core
 
-__all__ = ["Engine", "DevicesManager", "engine", "wvosd"]
+__all__ = ["Engine", "DevicesManager", "engine", "wvosd", "lv2", "Lv2Core"]

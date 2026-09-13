@@ -2,9 +2,9 @@ import asyncio
 from . import lv2
 
 
-class Lv2Core:
+class _Lv2Core:
     def __init__(self):
-        self.lv2_manager: lv2.Lv2Manager = None
+        self.lv2_manager: lv2.Lv2Chain = None
         self.lv2_plugin_available_list = None
 
         self.selected_plugins: dict = None
@@ -20,7 +20,7 @@ class Lv2Core:
         if self.lv2_manager is not None or self.lv2_plugin_available_list is not None:
             raise ValueError("Lv2Core already initialized.")
 
-        self.lv2_manager = await asyncio.to_thread(lv2.Lv2Manager)
+        self.lv2_manager = await asyncio.to_thread(lv2.Lv2Chain)
         self.lv2_plugin_available_list = await asyncio.to_thread(
             self.lv2_manager.get_available_plugins
         )
@@ -39,3 +39,6 @@ class Lv2Core:
             asyncio.create_task(self.get_available_plugins(callback))
         else:
             callback(self.lv2_plugin_available_list)
+
+
+Lv2Core = _Lv2Core()

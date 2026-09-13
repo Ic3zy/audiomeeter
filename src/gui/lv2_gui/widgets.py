@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
+from core import Lv2Core
+
 colors = {
     "plugin_wd_bg": "#033d43",
     "plugin_wd_bg_bottom": "#021f24",
@@ -254,7 +256,7 @@ class CancelButton(QPushButton):
 
 
 class PluginListContainer(QWidget):
-    def __init__(self, plugin_infos):
+    def __init__(self):
         super().__init__()
 
         content = QWidget()
@@ -263,11 +265,7 @@ class PluginListContainer(QWidget):
         content_layout.setContentsMargins(8, 8, 8, 8)
         content_layout.setAlignment(Qt.AlignTop)
 
-        for param_info in plugin_infos:
-            plugin_widget = Lv2PluginWidget(param_info)
-            plugin_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-            plugin_widget.click_callback = self.on_select_plugin
-            content_layout.addWidget(plugin_widget)
+        self.content_layout = content_layout
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -288,6 +286,18 @@ class PluginListContainer(QWidget):
         )
 
         self.cancel_button_callback = None
+
+        self.load_plugins()
+
+    def set_plugins(self, plugin_infos):
+        for param_info in plugin_infos:
+            plugin_widget = Lv2PluginWidget(param_info)
+            plugin_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            plugin_widget.click_callback = self.on_select_plugin
+            self.content_layout.addWidget(plugin_widget)
+
+    def load_plugins(self):
+        Lv2Core.get_available_plugins_for_callback(self.set_plugins)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -942,19 +952,7 @@ class TitlBarWidget(QWidget):
     def add_clicked(self):
         print("Add clicked")
         if instance := GeneralContainer.get():
-            plugin_infos = [
-                {
-                    "name": "Audio File",
-                    "uri": "http://kxstudio.sf.net/carla/plugins/audiofile",
-                    "category": "Utility Plugin",
-                },
-                {
-                    "name": "Audio Gain(Mono)",
-                    "uri": "http://kxstudio.sf.net/carla/plugins/audiogain",
-                    "category": "Utility Plugin",
-                },
-            ]
-            pl = PluginListContainer(plugin_infos)
+            pl = PluginListContainer()
             # pl = PluginDropArea()
             # pl.set_plugins(plugin_infos)
             instance.clear()
