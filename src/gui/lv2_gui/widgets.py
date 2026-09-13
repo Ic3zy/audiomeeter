@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 from base import Ctx
 from core import Lv2Core
+from . import ctx_monitor as CtxMonitor
 
 colors = {
     "plugin_wd_bg": "#033d43",
@@ -34,29 +35,6 @@ colors = {
     "device_text": "#cfeef0",
     "device_text_selected": "#ffffff",
 }
-
-
-# Name Space
-class CtxMonitor:
-    def get_devices():
-        return [
-            "Lv2_H_in_A1",
-            "Lv2_H_in_A2",
-            "Lv2_H_in_A3",
-            "Lv2_H_out_A1",
-            "Lv2_H_out_A2",
-            "Lv2_H_out_A3",
-            "Lv2_V_in_main",
-            "Lv2_V_in_aux",
-            "Lv2_V_out_b1",
-            "Lv2_V_out_b2",
-        ]
-
-    def device_name_to_ctx_name(name):
-        return f"Lv2Device_{name}"
-
-    def get_plugins_from_device_name(name):
-        pass
 
 
 class Lv2ParamSlider(QSlider):
@@ -1116,7 +1094,6 @@ class GeneralContainer(QWidget):
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
-        l = ["A1", "A2", "A3"]
 
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setSpacing(0)
@@ -1129,7 +1106,7 @@ class MainWidget(QWidget):
         self.general_container = GeneralContainer()
         GeneralContainer.set_instance(self.general_container)
 
-        self.devices_container = DevicesContainer(l)
+        self.devices_container = DevicesContainer(CtxMonitor.get_device_names())
         self.title_bar = TitlBarWidget()
 
         self.layout.addWidget(self.devices_container)
