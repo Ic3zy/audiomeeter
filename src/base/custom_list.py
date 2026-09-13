@@ -9,7 +9,7 @@ class ObservableList(UserList):
 
     def _notify(self, action, *args):
         if callable(self._on_change):
-            self._on_change(action, self.data, *args)
+            self._on_change()
 
     def append(self, item):
         super().append(item)

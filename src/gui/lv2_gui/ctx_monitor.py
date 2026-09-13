@@ -49,26 +49,26 @@ def device_name_to_ctx_name(d_name):
     return f"Lv2Device_{name}"
 
 
-def get_plugins_from_ctx_name(name):
-    plugins = []
-    c = 0
-    while (r := Ctx.get(f"{name}_pl_s_{c}")) is not None:
-        plugins.append(r)
-        c += 1
+def device_id_to_ctx_name(d_id):
+    return f"Lv2Device_{d_id}"
 
-    return plugins
+
+def get_plugins_from_ctx_name(name):
+    return Ctx.get(f"{name}_plugins")
 
 
 def get_plugins_from_device_name(name):
     ctx_name = device_name_to_ctx_name(name)
 
-    # Ctx[f"{ctx_name}_pl_s_0"] = {
-    #     "name": "LSP A/B Tester x8 Stereo",
-    #     "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x8_stereo",
-    #     "category": "Utility Plugin",
-    # }
+    t = {
+        "name": "LSP A/B Tester x8 Stereo",
+        "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x8_stereo",
+        "category": "Utility Plugin",
+    }
 
-    return get_plugins_from_ctx_name(ctx_name)
+    # add_plugin_to_device_from_device_name(name, t)
+
+    return get_plugins_from_ctx_name(ctx_name) or []
 
 
 def get_last_plugin_id_from_device_name(name):
@@ -87,6 +87,12 @@ def get_last_plugin_id_from_device_name(name):
 
 def add_plugin_to_device_from_device_name(name, plugin):
     ctx_name = device_name_to_ctx_name(name)
-    c = get_last_plugin_id_from_device_name(name) + 1
+    if not Ctx.get(f"{ctx_name}_plugins"):
+        Ctx.set_custom_list(f"{ctx_name}_plugins", [plugin])
+    else:
+        Ctx.get(f"{ctx_name}_plugins").append(plugin)
 
-    Ctx[f"{ctx_name}_pl_s_{c}"] = plugin
+
+def save_callback_all_devices(callback):
+    for name in get_ctx_names():
+        Ctx.add_callback(f"{device_id_to_ctx_name(name)}_plugins", callback)

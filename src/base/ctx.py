@@ -149,6 +149,8 @@ class ctx:
         serializable_dump = {}
         for k, v in self._shared_data.items():
             try:
+                if isinstance(v, ObservableList):
+                    v = v.data
                 json.dumps(v)
                 serializable_dump[k] = v
             except (TypeError, OverflowError):
@@ -157,7 +159,10 @@ class ctx:
 
     def load_from_dict(self, data_dict: dict, trigger_callbacks: bool = True):
         for k, v in data_dict.items():
-            self._shared_data[k] = v
+            if isinstance(v, list):
+                self.set_custom_list(k, v)
+            else:
+                self._shared_data[k] = v
 
         if trigger_callbacks:
             for k in data_dict.keys():

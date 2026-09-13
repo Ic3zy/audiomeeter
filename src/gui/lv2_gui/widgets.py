@@ -320,6 +320,10 @@ class PluginListContainer(QWidget):
     def on_select_plugin(self, plugin_widget):
         print(f"Selected plugin: {plugin_widget.param_name}")
 
+        CtxMonitor.add_plugin_to_device_from_device_name(
+            Ctx.active_menu_device, plugin_widget.param_info
+        )
+
         if instance := GeneralContainer.get():
             instance.restore()
 
@@ -811,6 +815,9 @@ class PluginDropArea(QWidget):
         self.plugin_widgets.clear()
 
     def set_plugins(self, plugin_infos):
+        if plugin_infos is None:
+            return
+
         self.clear_plugins()
 
         for info in plugin_infos:
@@ -1018,9 +1025,12 @@ class GeneralWidget(QWidget):
 
         Ctx.add_callback("active_menu_device", self.on_active_device_changed)
 
+        CtxMonitor.save_callback_all_devices(self.on_active_device_changed)
+
         self.ex_widget = None
 
     def on_active_device_changed(self):
+        print("on_active_device_changed")
         active_device = Ctx.active_menu_device
         if active_device is None:
             return
