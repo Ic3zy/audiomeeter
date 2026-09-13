@@ -1,3 +1,5 @@
+from base import Ctx
+
 _CTX_NAMES = [
     "Lv2_H_in_A1",
     "Lv2_H_in_A2",
@@ -46,5 +48,17 @@ def device_name_to_ctx_name(name):
     return f"Lv2Device_{name}"
 
 
+def get_plugins_from_ctx_name(name):
+    plugins = []
+    c = 0
+    while (r := Ctx.get(f"{name}_pl_s_{c}")) is not None:
+        plugins.append(r)
+        c += 1
+
+    return plugins
+
+
 def get_plugins_from_device_name(name):
-    pass
+    ctx_name = device_name_to_ctx_name(name)
+
+    return get_plugins_from_ctx_name(ctx_name)

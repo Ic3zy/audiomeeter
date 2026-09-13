@@ -488,6 +488,10 @@ class DevicesContainer(QWidget):
     def _on_device_clicked(self, device_name):
         for dw in self.device_widgets:
             dw.set_selected(dw.device_name == device_name)
+
+        Ctx.active_menu_device = device_name
+        print(f"Device selected: {device_name}")
+
         self.device_selected.emit(device_name)
 
 
@@ -973,8 +977,8 @@ class GeneralWidget(QWidget):
 
         self.loading = True
 
-        self.spinner = SpinnerWidget()
-        self.label = QLabel("Loading, takes a few seconds...")
+        # self.spinner = SpinnerWidget()
+        # self.label = QLabel("Loading, takes a few seconds...")
 
         self._outer_layout = QVBoxLayout(self)
         self._outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -986,12 +990,29 @@ class GeneralWidget(QWidget):
         self.widget.setLayout(self._layout)
         self._outer_layout.addWidget(self.widget)
 
-        self._layout.addStretch()
-        self._layout.addWidget(self.spinner, 0, Qt.AlignCenter)
-        self._layout.addWidget(self.label, 0, Qt.AlignCenter)
-        self._layout.addStretch()
+        # self._layout.addStretch()
+        # self._layout.addWidget(self.spinner, 0, Qt.AlignCenter)
+        # self._layout.addWidget(self.label, 0, Qt.AlignCenter)
+        # self._layout.addStretch()
+
+        self.device_pl_menu = PluginDropArea()
+        self._layout.addWidget(self.device_pl_menu)
+
+        Ctx.add_callback("active_menu_device", self.on_active_device_changed)
 
         self.ex_widget = None
+
+    def on_active_device_changed(self):
+        active_device = Ctx.active_menu_device
+        if active_device is None:
+            return
+
+        # TODO: impl
+        active_device_plugins = CtxMonitor.get_plugins_from_device_name(active_device)
+        self.set_device_plugins(active_device_plugins)
+
+    def set_device_plugins(self, device_plugins):
+        self.device_pl_menu.set_plugins(device_plugins)
 
     def create_clean_layout(self):
         layout = QVBoxLayout()
