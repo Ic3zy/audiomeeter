@@ -44,7 +44,8 @@ def get_device_names():
     return _DEVICE_NAMES
 
 
-def device_name_to_ctx_name(name):
+def device_name_to_ctx_name(d_name):
+    name = DEVICE_TO_CTX[d_name]
     return f"Lv2Device_{name}"
 
 
@@ -60,5 +61,11 @@ def get_plugins_from_ctx_name(name):
 
 def get_plugins_from_device_name(name):
     ctx_name = device_name_to_ctx_name(name)
+
+    # Ctx[f"{ctx_name}_pl_s_0"] = {
+    #     "name": "LSP A/B Tester x8 Stereo",
+    #     "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x8_stereo",
+    #     "category": "Utility Plugin",
+    # }
 
     return get_plugins_from_ctx_name(ctx_name)

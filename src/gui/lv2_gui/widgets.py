@@ -454,6 +454,11 @@ class DevicesContainer(QWidget):
             self.device_widgets.append(dw)
             self.list_layout.addWidget(dw)
 
+        # if len(self.device_widgets) > 0:
+        #     self.device_widgets[0].set_selected(True)
+        #     Ctx.active_menu_device = self.device_widgets[0].device_name
+        #     print(f"Device selected: {self.device_widgets[0].device_name}")
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(content)
@@ -484,6 +489,19 @@ class DevicesContainer(QWidget):
 
         if self.device_widgets:
             self.device_widgets[0].set_selected(True)
+
+            Ctx.active_menu_device = self.device_widgets[0].device_name
+            print(f"Device selected: {self.device_widgets[0].device_name}")
+
+        Ctx.add_callback("active_menu_device", self.on_active_device_changed)
+
+    def on_active_device_changed(self):
+        active_device = Ctx.active_menu_device
+        if active_device is None:
+            return
+
+        for dw in self.device_widgets:
+            dw.set_selected(dw.device_name == active_device)
 
     def _on_device_clicked(self, device_name):
         for dw in self.device_widgets:
