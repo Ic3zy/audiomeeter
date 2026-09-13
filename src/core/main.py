@@ -49,10 +49,10 @@ class VirtualDevices:
             self._clean()
 
         expected_devices = {
-            "input_main": ("sink", "audiomeeter-input"),
-            "input_aux": ("sink", "audiomeeter-aux-input"),
-            "out_b1": ("source", "audiomeeter-out-b1"),
-            "out_b2": ("source", "audiomeeter-out-b2"),
+            "V_in_main": ("sink", "audiomeeter-input"),
+            "V_in_main": ("sink", "audiomeeter-aux-input"),
+            "H_out_b1": ("source", "audiomeeter-out-b1"),
+            "H_out_b2": ("source", "audiomeeter-out-b2"),
         }
 
         existing = {}
@@ -84,19 +84,19 @@ class VirtualDevices:
         print(" [AudioMeeter] Sanal cihaz matrisi enjekte ediliyor...")
 
         self.devices = {
-            "input_main": self.pulse.module_load(
+            "V_in_main": self.pulse.module_load(
                 "module-null-sink",
                 'sink_name=audiomeeter-input sink_properties="device.description=AudioMeeter_Input_(Main) audiomeeter.device_type=virtual"',
             ),
-            "input_aux": self.pulse.module_load(
+            "V_in_aux": self.pulse.module_load(
                 "module-null-sink",
                 'sink_name=audiomeeter-aux-input sink_properties="device.description=AudioMeeter_AUX_Input audiomeeter.device_type=virtual"',
             ),
-            "out_b1": self.pulse.module_load(
+            "H_out_b1": self.pulse.module_load(
                 "module-null-sink",
                 'sink_name=audiomeeter-out-b1 media.class=Audio/Source/Virtual sink_properties="device.description=AudioMeeter_Out_B1_(Virtual_Mic) audiomeeter.device_type=virtual"',
             ),
-            "out_b2": self.pulse.module_load(
+            "H_out_b2": self.pulse.module_load(
                 "module-null-sink",
                 'sink_name=audiomeeter-out-b2 media.class=Audio/Source/Virtual sink_properties="device.description=AudioMeeter_Out_B2_(Virtual_Mic) audiomeeter.device_type=virtual"',
             ),
@@ -181,17 +181,17 @@ class AudioCore:
         # Delay sink creation to give PipeWire time to register
         # the virtual source node ports (input_FL/input_FR)
         loop.call_later(
-            0.5, lambda: self.create_sink("audiomeeter-out-b1", "B1", "H_Out_B1_id")
+            0.5, lambda: self.create_sink("audiomeeter-out-b1", "B1", "H_out_B1_id")
         )
         loop.call_later(
-            1.0, lambda: self.create_sink("audiomeeter-out-b2", "B2", "H_Out_B2_id")
+            1.0, lambda: self.create_sink("audiomeeter-out-b2", "B2", "H_out_B2_id")
         )
 
     def initialize_core_devices(self):
         # We strip the '.monitor' suffix because in PipeWire the node name is just the sink name
         name_to_id = {
-            "input_main": "audiomeeter-input",
-            "input_aux": "audiomeeter-aux-input",
+            "V_in_main": "audiomeeter-input",
+            "V_in_aux": "audiomeeter-aux-input",
         }
 
         for name, id in name_to_id.items():
@@ -203,7 +203,7 @@ class AudioCore:
             loop = asyncio.get_event_loop()
             loop.call_later(0.1, dev.link)
 
-            ids = 4 if name == "input_main" else 5
+            ids = 4 if name == "V_in_main" else 5
             self.save_eq_callback(name, ids)
             Ctx.add_callback(
                 f"s_sl_{ids}", lambda n=name, i=ids: self.set_db(n, i, is_sink=False)
@@ -311,8 +311,8 @@ class AudioCore:
             1: "in_1",
             2: "in_2",
             3: "in_3",
-            4: "input_main",
-            5: "input_aux",
+            4: "V_in_main",
+            5: "V_in_aux",
         }
 
         if isinstance(source_id, int):

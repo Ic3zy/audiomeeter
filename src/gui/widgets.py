@@ -1162,7 +1162,7 @@ class Virtual_input(QWidget):
         self.rl = Rl_Slider(self)
 
         self.led_vm = VirtualInputLedVM(self)
-        name = "input_main" if slider_number == 1 else "input_aux"
+        name = "V_in_main" if slider_number == 1 else "V_in_aux"
 
         Ctx.add_callback(name, lambda: self.led_vm.setValue(Ctx[name]))
 
