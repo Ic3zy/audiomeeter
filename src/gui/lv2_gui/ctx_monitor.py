@@ -69,3 +69,24 @@ def get_plugins_from_device_name(name):
     # }
 
     return get_plugins_from_ctx_name(ctx_name)
+
+
+def get_last_plugin_id_from_device_name(name):
+    ctx_name = device_name_to_ctx_name(name)
+    c = 0
+    last_id = 0
+
+    while Ctx.get(f"{ctx_name}_pl_s_{c}") is not None:
+        if c > last_id:
+            last_id = c
+
+        c += 1
+
+    return last_id
+
+
+def add_plugin_to_device_from_device_name(name, plugin):
+    ctx_name = device_name_to_ctx_name(name)
+    c = get_last_plugin_id_from_device_name(name) + 1
+
+    Ctx[f"{ctx_name}_pl_s_{c}"] = plugin

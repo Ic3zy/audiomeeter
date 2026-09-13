@@ -20,27 +20,30 @@
 import json, os
 
 from pathlib import Path
+from .custom_list import ObservableList
+
 
 def get_config_path() -> Path:
     xdg_config = os.environ.get("XDG_CONFIG_HOME")
-    
+
     if xdg_config:
         config_dir = Path(xdg_config) / "audiomeeter"
     else:
         config_dir = Path.home() / ".config" / "audiomeeter"
-    
+
     config_dir.mkdir(parents=True, exist_ok=True)
-    
+
     return config_dir / "config.json"
+
 
 class ctx:
     _shared_data = {}
     _callbacks = {}
 
-
-
     def __repr__(self):
-        return f"Ctx(data = {len(self._shared_data)}, callbacks = {len(self._callbacks)})"
+        return (
+            f"Ctx(data = {len(self._shared_data)}, callbacks = {len(self._callbacks)})"
+        )
 
     def __setattr__(self, name, value):
         # print(f"setattr: {name}")
@@ -49,7 +52,7 @@ class ctx:
         else:
             if self._shared_data.get(name) == value:
                 return
-            
+
             self._shared_data[name] = value
             self.callback_call(name)
 
@@ -63,7 +66,7 @@ class ctx:
         # print(f"setitem: {key}")
         if self._shared_data.get(key) == value:
             return
-        
+
         self._shared_data[key] = value
         self.callback_call(key)
 
@@ -81,12 +84,28 @@ class ctx:
 
     def __repr__(self):
         return f"Ctx({self._shared_data})"
-    
-    def get(self, key, default=None): return self._shared_data.get(key, default)
-    def keys(self): return self._shared_data.keys()
-    def values(self): return self._shared_data.values()
-    def items(self): return self._shared_data.items()
 
+    def set_custom_list(self, key, value):
+        if isinstance(value, ObservableList):
+            raise ValueError("Yanlış değer tipi, değer yalnızca py list olabilir.")
+
+        obs_l = ObservableList(value, lambda k=key: self.on_list_changed(k))
+        self._shared_data[key] = obs_l
+
+    def on_list_changed(self, key):
+        self.callback_call(key)
+
+    def get(self, key, default=None):
+        return self._shared_data.get(key, default)
+
+    def keys(self):
+        return self._shared_data.keys()
+
+    def values(self):
+        return self._shared_data.values()
+
+    def items(self):
+        return self._shared_data.items()
 
     # --- Callbacks ---
     def callback_call(self, key):
@@ -102,8 +121,7 @@ class ctx:
             callback()
 
         self._callbacks[key].append(callback)
-    
-    
+
     def remove_callback(self, key, callback):
         if self._callbacks.get(key) is not None:
             self._callbacks[key].remove(callback)
@@ -155,6 +173,7 @@ class ctx:
         except Exception as e:
             print(f"Config loading error: {e}")
             import traceback
+
             traceback.print_exc()
-            
+
             return {}

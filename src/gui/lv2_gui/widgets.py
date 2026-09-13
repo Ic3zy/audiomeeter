@@ -1025,7 +1025,6 @@ class GeneralWidget(QWidget):
         if active_device is None:
             return
 
-        # TODO: impl
         active_device_plugins = CtxMonitor.get_plugins_from_device_name(active_device)
         self.set_device_plugins(active_device_plugins)
 
