@@ -164,9 +164,7 @@ class Lv2ParamContainer(QWidget):
         super().__init__()
         self.param_info = param_info
         self.params = param_info["params"]
-        self.init_widget()
 
-    def init_widget(self):
         self.setAttribute(Qt.WA_StyledBackground, True)
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
@@ -177,6 +175,27 @@ class Lv2ParamContainer(QWidget):
             layout.addWidget(param_w.widget)
 
         self.setLayout(layout)
+
+        self.cancel_button = CancelButton(self, text="Apply")
+        self.cancel_button.clicked.connect(self.cancel_clicked)
+
+        self.cancel_button.move(
+            self.width() - self.cancel_button.width() - 10,
+            self.height() - self.cancel_button.height() - 10,
+        )
+
+    def cancel_clicked(self):
+        if instance := GeneralContainer.get():
+            instance.restore()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        print("resizeEvent")
+
+        self.cancel_button.move(
+            self.width() - self.cancel_button.width() - 10,
+            self.height() - self.cancel_button.height() - 10,
+        )
 
 
 class Lv2PluginWidget(QWidget):
@@ -245,12 +264,12 @@ class Lv2PluginWidget(QWidget):
 
 
 class CancelButton(QPushButton):
-    def __init__(self, parent):
+    def __init__(self, parent, text="Cancel"):
         super().__init__(parent)
 
         self.setFixedSize(70, 30)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setText("Cancel")
+        self.setText(text)
 
         self.setStyleSheet("""
             QPushButton {
