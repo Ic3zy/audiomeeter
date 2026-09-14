@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from .styler import Styler
+from .lv2_gui.widgets import MainWindow as Lv2MainWindow
 from base import Ctx
 from core import DevicesManager
 
@@ -1617,10 +1618,13 @@ class AudioDeviceDialog(QDialog):
 
 # ---- title bar ----
 class Select_hardware_output_buttons(QWidget):
-    def __init__(self, parent=None, slider_number=1, settings_button=False):
+    def __init__(
+        self, parent=None, slider_number=1, settings_button=False, click_callback=None
+    ):
         super().__init__(parent)
         self.slider_number = slider_number
         self.is_settings_button = settings_button
+        self.click_callback = click_callback
 
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(0)
@@ -1647,6 +1651,9 @@ class Select_hardware_output_buttons(QWidget):
 
     def on_widget_clicked(self):
         if self.is_settings_button:
+            if self.click_callback:
+                self.click_callback()
+
             return
 
         popup = AudioDeviceDialog(self)
@@ -1732,9 +1739,21 @@ class H_o_button_container(QWidget):
             self.layout.addWidget(Select_hardware_output_buttons(slider_number=_ + 1))
 
         self.settings_button = Select_hardware_output_buttons(
-            slider_number=-1, settings_button=True
+            slider_number=-1,
+            settings_button=True,
+            click_callback=self.settings_callback,
         )
+
         self.layout.addWidget(self.settings_button)
+
+        self.lv2_window = None
+
+    def settings_callback(self):
+        if self.lv2_window is None:
+            self.lv2_window = Lv2MainWindow([])
+            self.lv2_window.show()
+            self.lv2_window.raise_()
+            self.lv2_window.activateWindow()
 
 
 class Hardware_output_text(QWidget):

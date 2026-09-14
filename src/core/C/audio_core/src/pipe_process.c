@@ -70,7 +70,14 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
   }
   if (device->eq.lv2_manager != NULL)
   {
-    // printf("lv2 manager\n");
+    struct Output *out = lv2_manager_process(device->eq.lv2_manager, in_l, in_r, (int)n_samples);
+    if (out != NULL)
+    {
+      if (in_l && out->left)
+        memcpy(in_l, out->left, sizeof(float) * n_samples);
+      if (in_r && out->right)
+        memcpy(in_r, out->right, sizeof(float) * n_samples);
+    }
   }
   if (device->eq.mono && in_l && in_r)
   {
@@ -98,9 +105,17 @@ static inline void sink_apply_filter(struct SinkCore *sink, float *in_l,
       if (in_r)
         in_r[i] = in_r[i] * sink->eq.gain;
     }
-    if (sink->eq.lv2_manager != NULL)
+  }
+
+  if (sink->eq.lv2_manager != NULL)
+  {
+    struct Output *out = lv2_manager_process(sink->eq.lv2_manager, in_l, in_r, (int)n_samples);
+    if (out != NULL)
     {
-      printf("lv2 manager Sink\n");
+      if (in_l && out->left)
+        memcpy(in_l, out->left, sizeof(float) * n_samples);
+      if (in_r && out->right)
+        memcpy(in_r, out->right, sizeof(float) * n_samples);
     }
   }
 }
