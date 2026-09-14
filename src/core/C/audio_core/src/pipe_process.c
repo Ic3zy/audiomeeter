@@ -6,12 +6,16 @@
 #include "globals.h"
 #include "types.h"
 
+#include "lv2_manager.h"
+
 #define max_steps 10
 #define step 10
 
 // Helper function to convert peak amplitude to dB
-static inline int amplitude_to_db(float max_val) {
-  if (max_val < 0.00001f) {
+static inline int amplitude_to_db(float max_val)
+{
+  if (max_val < 0.00001f)
+  {
     return -100; // Silence floor
   }
   float db = 20.0f * log10f(max_val);
@@ -19,11 +23,13 @@ static inline int amplitude_to_db(float max_val) {
 }
 
 static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
-                                       float *in_r, uint32_t n_samples) {
+                                       float *in_r, uint32_t n_samples)
+{
   if (in_l == NULL && in_r == NULL)
     return;
 
-  if (device->eq.gain == 0.0f) {
+  if (device->eq.gain == 0.0f)
+  {
     if (in_l)
       memset(in_l, 0, n_samples * sizeof(float));
     if (in_r)
@@ -31,32 +37,45 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
     return;
   }
 
-  for (uint32_t i = 0; i < n_samples; i++) {
+  for (uint32_t i = 0; i < n_samples; i++)
+  {
     in_l[i] = in_l[i] * device->eq.gain;
     in_r[i] = in_r[i] * device->eq.gain;
   }
 
-  if (device->eq.bass->db_gain != 0.0f) {
-    for (uint32_t i = 0; i < n_samples; i++) {
+  if (device->eq.bass->db_gain != 0.0f)
+  {
+    for (uint32_t i = 0; i < n_samples; i++)
+    {
       in_l[i] = process_sample(device->eq.bass->state_left, in_l[i]);
       in_r[i] = process_sample(device->eq.bass->state_right, in_r[i]);
     }
   }
 
-  if (device->eq.mid->db_gain != 0.0f) {
-    for (uint32_t i = 0; i < n_samples; i++) {
+  if (device->eq.mid->db_gain != 0.0f)
+  {
+    for (uint32_t i = 0; i < n_samples; i++)
+    {
       in_l[i] = process_sample(device->eq.mid->state_left, in_l[i]);
       in_r[i] = process_sample(device->eq.mid->state_right, in_r[i]);
     }
   }
-  if (device->eq.treble->db_gain != 0.0f) {
-    for (uint32_t i = 0; i < n_samples; i++) {
+  if (device->eq.treble->db_gain != 0.0f)
+  {
+    for (uint32_t i = 0; i < n_samples; i++)
+    {
       in_l[i] = process_sample(device->eq.treble->state_left, in_l[i]);
       in_r[i] = process_sample(device->eq.treble->state_right, in_r[i]);
     }
   }
-  if (device->eq.mono && in_l && in_r) {
-    for (uint32_t i = 0; i < n_samples; i++) {
+  if (device->eq.lv2_manager != NULL)
+  {
+    // printf("lv2 manager\n");
+  }
+  if (device->eq.mono && in_l && in_r)
+  {
+    for (uint32_t i = 0; i < n_samples; i++)
+    {
       float top = (in_l[i] + in_r[i]) * 0.5f;
       in_r[i] = top;
       in_l[i] = top;
@@ -65,21 +84,29 @@ static inline void device_apply_filter(struct DeviceCore *device, float *in_l,
 }
 
 static inline void sink_apply_filter(struct SinkCore *sink, float *in_l,
-                                     float *in_r, uint32_t n_samples) {
+                                     float *in_r, uint32_t n_samples)
+{
   if (in_l == NULL && in_r == NULL)
     return;
 
-  if (sink->eq.gain != 1.0f) {
-    for (uint32_t i = 0; i < n_samples; i++) {
+  if (sink->eq.gain != 1.0f)
+  {
+    for (uint32_t i = 0; i < n_samples; i++)
+    {
       if (in_l)
         in_l[i] = in_l[i] * sink->eq.gain;
       if (in_r)
         in_r[i] = in_r[i] * sink->eq.gain;
     }
+    if (sink->eq.lv2_manager != NULL)
+    {
+      printf("lv2 manager Sink\n");
+    }
   }
 }
 
-void pipewire_process(void *data, struct spa_io_position *position) {
+void pipewire_process(void *data, struct spa_io_position *position)
+{
   (void)data; // Unused parameter warning suppression
 
   if (position == NULL)
@@ -96,7 +123,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
   float *sink_bufs_r[MAX_DEVICES] = {NULL};
 
   // Retrieve and clear all output sink buffers (exactly once!)
-  for (int s = 0; s < global_manager.sinks_count; s++) {
+  for (int s = 0; s < global_manager.sinks_count; s++)
+  {
     struct SinkCore *sink = global_manager.sinks[s];
     if (sink == NULL || sink->pw_core.port_l == NULL ||
         sink->pw_core.port_r == NULL)
@@ -108,16 +136,19 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     sink_bufs_l[s] = out_l;
     sink_bufs_r[s] = out_r;
 
-    if (out_l != NULL) {
+    if (out_l != NULL)
+    {
       memset(out_l, 0, n_samples * sizeof(float));
     }
-    if (out_r != NULL) {
+    if (out_r != NULL)
+    {
       memset(out_r, 0, n_samples * sizeof(float));
     }
   }
 
   // Retrieve all input device buffers (exactly once!)
-  for (int d = 0; d < global_manager.devices_count; d++) {
+  for (int d = 0; d < global_manager.devices_count; d++)
+  {
     struct DeviceCore *device = global_manager.devices[d];
     if (device == NULL || device->pw_core.port_l == NULL ||
         device->pw_core.port_r == NULL)
@@ -132,7 +163,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
   }
 
   // Mix inputs to target bridged sinks using stored pointers (with 1.0 gain)
-  for (int d = 0; d < global_manager.devices_count; d++) {
+  for (int d = 0; d < global_manager.devices_count; d++)
+  {
     struct DeviceCore *device = global_manager.devices[d];
     if (device == NULL)
       continue;
@@ -145,7 +177,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
       continue;
 
     // Accumulate/mix into each bridged sink
-    for (int bs = 0; bs < device->bridged_sinks_count; bs++) {
+    for (int bs = 0; bs < device->bridged_sinks_count; bs++)
+    {
       struct SinkCore *sink = device->bridged_sinks[bs];
       if (sink == NULL)
         continue;
@@ -153,8 +186,10 @@ void pipewire_process(void *data, struct spa_io_position *position) {
       // Find the index of this sink in global_manager.sinks to get its stored
       // buffer pointer
       int sink_idx = -1;
-      for (int s = 0; s < global_manager.sinks_count; s++) {
-        if (global_manager.sinks[s] == sink) {
+      for (int s = 0; s < global_manager.sinks_count; s++)
+      {
+        if (global_manager.sinks[s] == sink)
+        {
           sink_idx = s;
           break;
         }
@@ -171,15 +206,19 @@ void pipewire_process(void *data, struct spa_io_position *position) {
 
       // Perform the mix operation sample by sample (direct mix without gain
       // filters)
-      if (out_l != NULL) {
-        for (uint32_t i = 0; i < n_samples; i++) {
+      if (out_l != NULL)
+      {
+        for (uint32_t i = 0; i < n_samples; i++)
+        {
           float sample_l = in_l ? in_l[i] : 0.0f;
           out_l[i] += sample_l;
         }
       }
 
-      if (out_r != NULL) {
-        for (uint32_t i = 0; i < n_samples; i++) {
+      if (out_r != NULL)
+      {
+        for (uint32_t i = 0; i < n_samples; i++)
+        {
           float sample_r = in_r ? in_r[i] : (in_l ? in_l[i] : 0.0f);
           out_r[i] += sample_r;
         }
@@ -189,7 +228,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
 
   // Measure peak amplitude for level meters and store as dB in SinkCore and
   // DeviceCore
-  for (int d = 0; d < global_manager.devices_count; d++) {
+  for (int d = 0; d < global_manager.devices_count; d++)
+  {
     struct DeviceCore *device = global_manager.devices[d];
     if (device == NULL)
       continue;
@@ -198,16 +238,20 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     float *in_r = device_bufs_r[d];
     float max_val = 0.0f;
 
-    if (in_l) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+    if (in_l)
+    {
+      for (uint32_t i = 0; i < n_samples; i++)
+      {
         float val = fabsf(in_l[i]);
         if (val > max_val)
           max_val = val;
       }
     }
 
-    if (in_r) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+    if (in_r)
+    {
+      for (uint32_t i = 0; i < n_samples; i++)
+      {
         float val = fabsf(in_r[i]);
         if (val > max_val)
           max_val = val;
@@ -216,7 +260,8 @@ void pipewire_process(void *data, struct spa_io_position *position) {
     device->dB = amplitude_to_db(max_val);
   }
 
-  for (int s = 0; s < global_manager.sinks_count; s++) {
+  for (int s = 0; s < global_manager.sinks_count; s++)
+  {
     struct SinkCore *sink = global_manager.sinks[s];
     if (sink == NULL)
       continue;
@@ -227,15 +272,19 @@ void pipewire_process(void *data, struct spa_io_position *position) {
 
     sink_apply_filter(sink, out_l, out_r, n_samples);
 
-    if (out_l) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+    if (out_l)
+    {
+      for (uint32_t i = 0; i < n_samples; i++)
+      {
         float val = fabsf(out_l[i]);
         if (val > max_val)
           max_val = val;
       }
     }
-    if (out_r) {
-      for (uint32_t i = 0; i < n_samples; i++) {
+    if (out_r)
+    {
+      for (uint32_t i = 0; i < n_samples; i++)
+      {
         float val = fabsf(out_r[i]);
         if (val > max_val)
           max_val = val;

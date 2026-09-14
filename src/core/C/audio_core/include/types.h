@@ -1,6 +1,7 @@
 #pragma once
 
 #include "constants.h"
+#include "lv2_manager.h"
 #include "rt_biquad.h"
 #include <pipewire/pipewire.h>
 
@@ -21,9 +22,12 @@ struct PwCore {
 
 struct Equalizer {
   float gain;
+
   struct rt_band *bass;
   struct rt_band *mid;
   struct rt_band *treble;
+
+  struct Lv2Manager *lv2_manager;
 
   bool mono;
 };

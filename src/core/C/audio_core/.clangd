@@ -1,7 +1,8 @@
 CompileFlags:
   Add:
-    - -I/home/abdullah/Belgeler/code_work/audiomeeter/src/core/C/audio_core/include
-    - -I/home/abdullah/Belgeler/code_work/audiomeeter/src/core/C/rt_biquad/include
+    - -I/src/core/C/audio_core/include
+    - -I/src/core/C/lv2-api/src/include
+    - -I/src/core/C/rt_biquad/include
     - -I/usr/include/pipewire-0.3
     - -I/usr/include/spa-0.2
     - -D_REENTRANT

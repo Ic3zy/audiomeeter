@@ -140,6 +140,30 @@ class AudioCore:
         self.save_source_device()
         self.initialize_core_devices()
         self.initialize_default_sinks()
+        Ctx["audio_core"] = self
+
+    def check_and_apply_lv2(self, key, obj):
+        key_to_ctx = {
+            "in_1": "Lv2_H_in_A1",
+            "in_2": "Lv2_H_in_A2",
+            "in_3": "Lv2_H_in_A3",
+            "V_in_main": "Lv2_V_in_main",
+            "V_in_aux": "Lv2_V_in_aux",
+            "A1": "Lv2_H_out_A1",
+            "A2": "Lv2_H_out_A2",
+            "A3": "Lv2_H_out_A3",
+            "B1": "Lv2_V_out_b1",
+            "B2": "Lv2_V_out_b2",
+        }
+        ctx_name = key_to_ctx.get(key)
+        if ctx_name:
+            core = Ctx.get(f"Lv2Device_{ctx_name}_core")
+            if core and core.is_initialized and core.lv2_manager:
+                try:
+                    obj.set_lv2_manager(core.lv2_manager)
+                    print(f" [AudioCore] Attached Lv2Manager to {key}")
+                except Exception as e:
+                    print(f" [AudioCore] Failed to attach Lv2Manager to {key}: {e}")
 
     def set_eq_from_device_name(self, device_name, eq_type, db):
         if device_name not in self.devices:
@@ -198,6 +222,7 @@ class AudioCore:
             print(f" [AudioCore] initialize_core_devices: {name}, {id}")
             dev = engine.Device(name, id)
             self.devices[name] = dev
+            self.check_and_apply_lv2(name, dev)
 
             # Allow PipeWire loop to register the ports before linking
             loop = asyncio.get_event_loop()
@@ -374,6 +399,7 @@ class AudioCore:
         # Case 3: First time assigning a device to this slot → create new
         dev = engine.Device(device_key, device_id)
         self.devices[device_key] = dev
+        self.check_and_apply_lv2(device_key, dev)
 
         loop = asyncio.get_event_loop()
         loop.call_later(0.1, dev.link)
@@ -486,6 +512,7 @@ class AudioCore:
 
         sink = engine.Sink(device_name, device_id)
         self.sinks[device_name] = sink
+        self.check_and_apply_lv2(device_name, sink)
 
         # A1=6, A2=7, A3=8, B1=9, B2=10
         if device_name.startswith("B"):

@@ -1,5 +1,6 @@
 #pragma once
 #include "types.h"
+#include "lv2_manager.h"
 
 /* --- SINK --- */
 
@@ -13,6 +14,8 @@ int sink_get_dB(struct SinkCore *sink);
 int sink_set_dB(struct SinkCore *sink, int dB);
 
 int sink_set_gain_from_db(struct SinkCore *sink, float db);
+
+void sink_set_lv2_manager(struct SinkCore *sink, struct Lv2Manager *lv2_manager);
 
 /* --- DEVICES --- */
 
@@ -51,3 +54,5 @@ int sink_delete(struct SinkCore *sink);
 int device_delete(struct DeviceCore *device);
 int device_remove_bridged_sink(struct DeviceCore *device,
                                struct SinkCore *sink);
+
+void device_set_lv2_manager(struct DeviceCore *device, struct Lv2Manager *lv2_manager);

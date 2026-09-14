@@ -79,6 +79,51 @@ def get_last_plugin_id_from_device_name(name):
     return last_id
 
 
+CTX_TO_AUDIO_CORE_TARGET = {
+    "Lv2_H_in_A1": ("device", "in_1"),
+    "Lv2_H_in_A2": ("device", "in_2"),
+    "Lv2_H_in_A3": ("device", "in_3"),
+    "Lv2_V_in_main": ("device", "V_in_main"),
+    "Lv2_V_in_aux": ("device", "V_in_aux"),
+    "Lv2_H_out_A1": ("sink", "A1"),
+    "Lv2_H_out_A2": ("sink", "A2"),
+    "Lv2_H_out_A3": ("sink", "A3"),
+    "Lv2_V_out_b1": ("sink", "B1"),
+    "Lv2_V_out_b2": ("sink", "B2"),
+}
+
+
+def get_audio_device_or_sink_by_name(ctx_or_dev_name):
+    if ctx_or_dev_name in DEVICE_TO_CTX:
+        raw_ctx = DEVICE_TO_CTX[ctx_or_dev_name]
+    else:
+        raw_ctx = ctx_or_dev_name.replace("Lv2Device_", "")
+
+    target_info = CTX_TO_AUDIO_CORE_TARGET.get(raw_ctx)
+    if not target_info:
+        return None
+
+    audio_core = Ctx.get("audio_core")
+    if audio_core is None:
+        return None
+
+    kind, key = target_info
+    if kind == "device":
+        return audio_core.devices.get(key)
+    elif kind == "sink":
+        return audio_core.sinks.get(key)
+
+    return None
+
+
+def bind_lv2_to_audio_device(name, lv2_manager):
+    if lv2_manager is None:
+        return
+    audio_obj = get_audio_device_or_sink_by_name(name)
+    if audio_obj is not None and hasattr(audio_obj, "set_lv2_manager"):
+        audio_obj.set_lv2_manager(lv2_manager)
+
+
 def add_plugin_to_device_from_device_name(name, plugin):
     ctx_name = device_name_to_ctx_name(name)
     if not Ctx.get(f"{ctx_name}_plugins"):
@@ -93,10 +138,14 @@ def add_plugin_to_device_from_device_name(name, plugin):
 
     if core.is_initialized:
         core.add_plugin(plugin)
+        bind_lv2_to_audio_device(name, core.lv2_manager)
     else:
-        asyncio.create_task(
-            core.get_available_plugins(lambda l: core.add_plugin(plugin))
-        )
+
+        def _on_init(l):
+            core.add_plugin(plugin)
+            bind_lv2_to_audio_device(name, core.lv2_manager)
+
+        asyncio.create_task(core.get_available_plugins(_on_init))
 
 
 def delete_plugin_from_device_name(name, plugin):
@@ -175,6 +224,8 @@ def init_lv2():
             if not core.is_initialized:
                 await core.get_available_plugins()
             add_plugins_to_device_from_core(core, plugins)
+
+            bind_lv2_to_audio_device(name, core.lv2_manager)
 
     asyncio.create_task(_async_init_all())
 

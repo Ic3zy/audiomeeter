@@ -6,6 +6,10 @@ from libcpp cimport bool
 
 # ── C declarations ──────────────────────────────────────────────────────────
 
+cdef extern from "lv2_manager.h":
+    cdef struct Lv2Manager:
+        pass
+
 cdef extern from "main.h":
     int init_audio_core()
 
@@ -27,6 +31,7 @@ cdef extern from "devices.h":
     int sink_set_gain_from_db(SinkCore *sink, float db)
     void sink_link(SinkCore *sink)
     int sink_delete(SinkCore *sink)
+    void sink_set_lv2_manager(SinkCore *sink, Lv2Manager *lv2_manager)
 
     DeviceCore *device_create(const char *name, const char *device_id)
     int device_get_dB(DeviceCore *device)
@@ -43,6 +48,8 @@ cdef extern from "devices.h":
 
     int device_set_bridged_sink(DeviceCore *device, SinkCore *sink)
     int device_remove_bridged_sink(DeviceCore *device, SinkCore *sink)
+
+    void device_set_lv2_manager(DeviceCore *device, Lv2Manager *lv2_manager)
 
 # ── Python API ──────────────────────────────────────────────────────────────
 
@@ -92,6 +99,16 @@ cdef class Sink:
             sink_delete(self._ptr)
             self._ptr = NULL
             self._alive = False
+
+    def set_lv2_manager(self, lv2_manager):
+        self._check()
+        cdef size_t p = 0
+        if lv2_manager is not None:
+            if hasattr(lv2_manager, "ptr_val"):
+                p = lv2_manager.ptr_val
+            elif hasattr(lv2_manager, "_ptr"):
+                p = <size_t>lv2_manager._ptr
+        sink_set_lv2_manager(self._ptr, <Lv2Manager *>p)
 
     cdef inline void _check(self) except *:
         if not self._alive:
@@ -185,6 +202,16 @@ cdef class Device:
             device_delete(self._ptr)
             self._ptr = NULL
             self._alive = False
+
+    def set_lv2_manager(self, lv2_manager):
+        self._check()
+        cdef size_t p = 0
+        if lv2_manager is not None:
+            if hasattr(lv2_manager, "ptr_val"):
+                p = lv2_manager.ptr_val
+            elif hasattr(lv2_manager, "_ptr"):
+                p = <size_t>lv2_manager._ptr
+        device_set_lv2_manager(self._ptr, <Lv2Manager *>p)
 
     cdef inline void _check(self) except *:
         if not self._alive:

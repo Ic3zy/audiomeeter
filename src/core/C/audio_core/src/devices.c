@@ -8,27 +8,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "lv2_manager.h"
 
 #define ENGINE_NODE_NAME "AudioMeeterEngine"
 
-struct link_proxy_data {
+struct link_proxy_data
+{
   struct spa_hook proxy_listener;
   char info[256];
 };
 
 static void on_link_proxy_error(void *data, int seq, int res,
-                                const char *message) {
+                                const char *message)
+{
   (void)seq;
   struct link_proxy_data *pdata = data;
-  if (pdata && pdata->info[0] != '\0') {
+  if (pdata && pdata->info[0] != '\0')
+  {
     fprintf(stderr, "[pipe_process] link error [%s] (res=%d): %s\n",
             pdata->info, res, message);
-  } else {
+  }
+  else
+  {
     fprintf(stderr, "[pipe_process] link error (res=%d): %s\n", res, message);
   }
 }
 
-static void on_link_proxy_destroy(void *data) {
+static void on_link_proxy_destroy(void *data)
+{
   struct link_proxy_data *pdata = data;
   spa_hook_remove(&pdata->proxy_listener);
   free(pdata);
@@ -45,15 +52,18 @@ static const struct pw_proxy_events link_proxy_events = {
  * all pending requests up to this point.  Use after pw_proxy_destroy() calls
  * to guarantee the server has removed the old links before we create new ones.
  */
-struct _sync_state {
+struct _sync_state
+{
   struct pw_thread_loop *loop;
   int pending_seq;
   bool done;
 };
 
-static void _on_core_done(void *data, uint32_t id, int seq) {
+static void _on_core_done(void *data, uint32_t id, int seq)
+{
   struct _sync_state *s = data;
-  if (id == PW_ID_CORE && seq == s->pending_seq) {
+  if (id == PW_ID_CORE && seq == s->pending_seq)
+  {
     s->done = true;
     pw_thread_loop_signal(s->loop, false);
   }
@@ -66,7 +76,8 @@ static const struct pw_core_events _sync_core_events = {
 
 /* Must be called with the thread loop already locked. */
 static void pw_sync_roundtrip(struct pw_thread_loop *loop,
-                              struct pw_core *core) {
+                              struct pw_core *core)
+{
   struct _sync_state state = {.loop = loop, .done = false};
   struct spa_hook core_listener;
   pw_core_add_listener(core, &core_listener, &_sync_core_events, &state);
@@ -78,7 +89,8 @@ static void pw_sync_roundtrip(struct pw_thread_loop *loop,
 
 struct pw_link *create_pw_link(struct pw_core *core, const char *output_node,
                                const char *output_port, const char *input_node,
-                               const char *input_port) {
+                               const char *input_port)
+{
   struct pw_properties *props =
       pw_properties_new("link.output.port", output_port, "link.input.port",
                         input_port, "object.linger", "false", NULL);
@@ -101,7 +113,8 @@ struct pw_link *create_pw_link(struct pw_core *core, const char *output_node,
     return NULL;
 
   struct link_proxy_data *pdata = calloc(1, sizeof(*pdata));
-  if (pdata != NULL) {
+  if (pdata != NULL)
+  {
     snprintf(pdata->info, sizeof(pdata->info), "%s:%s -> %s:%s",
              output_node ? output_node : "*", output_port ? output_port : "*",
              input_node ? input_node : "*", input_port ? input_port : "*");
@@ -120,23 +133,28 @@ void device_init(struct DeviceCore *device);
 // Internal: tear down PipeWire resources of a sink (links + ports) inside an
 // already-held lock, then sync roundtrip so the server fully processes the
 // removes before we reuse port IDs.
-static void sink_teardown_pw_locked(struct SinkCore *sink) {
+static void sink_teardown_pw_locked(struct SinkCore *sink)
+{
   // Destroy links
-  if (sink->pw_core.link_l != NULL) {
+  if (sink->pw_core.link_l != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_l);
     sink->pw_core.link_l = NULL;
   }
-  if (sink->pw_core.link_r != NULL) {
+  if (sink->pw_core.link_r != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)sink->pw_core.link_r);
     sink->pw_core.link_r = NULL;
   }
 
   // Remove ports
-  if (sink->pw_core.port_l != NULL) {
+  if (sink->pw_core.port_l != NULL)
+  {
     pw_filter_remove_port(sink->pw_core.port_l);
     sink->pw_core.port_l = NULL;
   }
-  if (sink->pw_core.port_r != NULL) {
+  if (sink->pw_core.port_r != NULL)
+  {
     pw_filter_remove_port(sink->pw_core.port_r);
     sink->pw_core.port_r = NULL;
   }
@@ -146,12 +164,15 @@ static void sink_teardown_pw_locked(struct SinkCore *sink) {
                     global_manager.pw_manager.core);
 }
 
-static const char *get_engine_node_id_str(char *buf, size_t size) {
+static const char *get_engine_node_id_str(char *buf, size_t size)
+{
   uint32_t node_id = SPA_ID_INVALID;
-  if (global_manager.filter != NULL) {
+  if (global_manager.filter != NULL)
+  {
     node_id = pw_filter_get_node_id(global_manager.filter);
   }
-  if (node_id != SPA_ID_INVALID) {
+  if (node_id != SPA_ID_INVALID)
+  {
     snprintf(buf, size, "%u", node_id);
     return buf;
   }
@@ -160,7 +181,8 @@ static const char *get_engine_node_id_str(char *buf, size_t size) {
 
 // Internal: create PipeWire ports + links for a sink inside an already-held
 // lock, then sync roundtrip to ensure ports are registered before linking.
-static void sink_setup_pw_locked(struct SinkCore *sink) {
+static void sink_setup_pw_locked(struct SinkCore *sink)
+{
   // Use the slot name for port names so they are stable across reassignments
   char port_name_l[256];
   char port_name_r[256];
@@ -183,7 +205,8 @@ static void sink_setup_pw_locked(struct SinkCore *sink) {
                          PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_r,
                          global_manager.default_port_params, 1);
 
-  if (sink->pw_core.port_l == NULL || sink->pw_core.port_r == NULL) {
+  if (sink->pw_core.port_l == NULL || sink->pw_core.port_r == NULL)
+  {
     fprintf(stderr, "[AudioMeeter] FATAL: failed to add ports for sink %s\n",
             sink->name);
     abort();
@@ -199,7 +222,8 @@ static void sink_setup_pw_locked(struct SinkCore *sink) {
   const char *dst_port_l = "playback_FL";
   const char *dst_port_r = "playback_FR";
 
-  if (strstr(sink->device_id, "audiomeeter-out-b") != NULL) {
+  if (strstr(sink->device_id, "audiomeeter-out-b") != NULL)
+  {
     dst_port_l = "input_FL";
     dst_port_r = "input_FR";
   }
@@ -216,7 +240,8 @@ static void sink_setup_pw_locked(struct SinkCore *sink) {
                      port_name_r, sink->device_id, dst_port_r);
 }
 
-struct SinkCore *sink_create(const char *name, const char *device_id) {
+struct SinkCore *sink_create(const char *name, const char *device_id)
+{
   if (name == NULL || device_id == NULL)
     return NULL;
 
@@ -235,10 +260,13 @@ struct SinkCore *sink_create(const char *name, const char *device_id) {
   sink_setup_pw_locked(sink);
 
   if (global_manager.sinks_count <
-      (int)(sizeof(global_manager.sinks) / sizeof(global_manager.sinks[0]))) {
+      (int)(sizeof(global_manager.sinks) / sizeof(global_manager.sinks[0])))
+  {
     global_manager.sinks[global_manager.sinks_count] = sink;
     global_manager.sinks_count++;
-  } else {
+  }
+  else
+  {
     fprintf(stderr, "[AudioMeeter] sink_create: max sink count reached\n");
   }
 
@@ -246,26 +274,30 @@ struct SinkCore *sink_create(const char *name, const char *device_id) {
   return sink;
 }
 
-void sink_link(struct SinkCore *sink) {
+void sink_link(struct SinkCore *sink)
+{
   // Now a no-op: linking is done atomically inside
   // sink_create/sink_setup_pw_locked
   (void)sink;
 }
 
-int sink_get_dB(struct SinkCore *sink) {
+int sink_get_dB(struct SinkCore *sink)
+{
   if (sink == NULL)
     return -1;
   return sink->dB;
 }
 
-int sink_set_dB(struct SinkCore *sink, int dB) {
+int sink_set_dB(struct SinkCore *sink, int dB)
+{
   if (sink == NULL)
     return -1;
   sink->dB = dB;
   return 0;
 }
 
-int sink_set_gain_from_db(struct SinkCore *sink, float db) {
+int sink_set_gain_from_db(struct SinkCore *sink, float db)
+{
   if (sink == NULL)
     return -1;
 
@@ -280,10 +312,19 @@ int sink_set_gain_from_db(struct SinkCore *sink, float db) {
   sink->eq.gain = gain;
   return 0;
 }
+
+void sink_set_lv2_manager(struct SinkCore *sink, struct Lv2Manager *lv2_manager)
+{
+  if (sink == NULL)
+    return;
+
+  sink->eq.lv2_manager = lv2_manager;
+}
 // END SINK CLASS
 
 // DEVICE CLASS
-struct DeviceCore *device_create(const char *name, const char *device_id) {
+struct DeviceCore *device_create(const char *name, const char *device_id)
+{
   if (name == NULL || device_id == NULL)
     return NULL;
 
@@ -301,10 +342,13 @@ struct DeviceCore *device_create(const char *name, const char *device_id) {
 
   if (global_manager.devices_count <
       (int)(sizeof(global_manager.devices) /
-            sizeof(global_manager.devices[0]))) {
+            sizeof(global_manager.devices[0])))
+  {
     global_manager.devices[global_manager.devices_count] = device;
     global_manager.devices_count++;
-  } else {
+  }
+  else
+  {
     fprintf(stderr, "[pipe_process] device_create: max device count reached\n");
   }
 
@@ -313,7 +357,8 @@ struct DeviceCore *device_create(const char *name, const char *device_id) {
   return device;
 }
 
-void device_init(struct DeviceCore *device) {
+void device_init(struct DeviceCore *device)
+{
   if (device == NULL)
     abort();
 
@@ -352,7 +397,8 @@ void device_init(struct DeviceCore *device) {
                          PW_FILTER_PORT_FLAG_MAP_BUFFERS, 0, props_r,
                          global_manager.default_port_params, 1);
 
-  if (device->pw_core.port_l == NULL || device->pw_core.port_r == NULL) {
+  if (device->pw_core.port_l == NULL || device->pw_core.port_r == NULL)
+  {
     pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
     abort();
   }
@@ -364,17 +410,20 @@ void device_init(struct DeviceCore *device) {
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 }
 
-void device_link(struct DeviceCore *device) {
+void device_link(struct DeviceCore *device)
+{
   if (device == NULL)
     abort();
 
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 
-  if (device->pw_core.link_l != NULL) {
+  if (device->pw_core.link_l != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_l);
     device->pw_core.link_l = NULL;
   }
-  if (device->pw_core.link_r != NULL) {
+  if (device->pw_core.link_r != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_r);
     device->pw_core.link_r = NULL;
   }
@@ -386,7 +435,8 @@ void device_link(struct DeviceCore *device) {
 
   const char *prefix = "capture";
   if (strstr(device->device_id, "output") != NULL ||
-      strstr(device->device_id, "audiomeeter") != NULL) {
+      strstr(device->device_id, "audiomeeter") != NULL)
+  {
     prefix = "monitor";
   }
 
@@ -394,10 +444,13 @@ void device_link(struct DeviceCore *device) {
   char src_port_r[64];
   if (strstr(device->device_id, "mono") != NULL ||
       strstr(device->device_id, "Mono") != NULL ||
-      strstr(device->device_id, "MONO") != NULL) {
+      strstr(device->device_id, "MONO") != NULL)
+  {
     snprintf(src_port_l, sizeof(src_port_l), "%s_MONO", prefix);
     snprintf(src_port_r, sizeof(src_port_r), "%s_MONO", prefix);
-  } else {
+  }
+  else
+  {
     snprintf(src_port_l, sizeof(src_port_l), "%s_FL", prefix);
     snprintf(src_port_r, sizeof(src_port_r), "%s_FR", prefix);
   }
@@ -410,21 +463,24 @@ void device_link(struct DeviceCore *device) {
       create_pw_link(global_manager.pw_manager.core, device->device_id,
                      src_port_l, engine_target, port_name_l);
 
-  if (device->pw_core.link_l == NULL) {
+  if (device->pw_core.link_l == NULL)
+  {
     char alt_port[64];
     snprintf(alt_port, sizeof(alt_port), "%s_MONO", prefix);
     device->pw_core.link_l =
         create_pw_link(global_manager.pw_manager.core, device->device_id,
                        alt_port, engine_target, port_name_l);
   }
-  if (device->pw_core.link_l == NULL) {
+  if (device->pw_core.link_l == NULL)
+  {
     char alt_port[64];
     snprintf(alt_port, sizeof(alt_port), "%s_1", prefix);
     device->pw_core.link_l =
         create_pw_link(global_manager.pw_manager.core, device->device_id,
                        alt_port, engine_target, port_name_l);
   }
-  if (device->pw_core.link_l == NULL) {
+  if (device->pw_core.link_l == NULL)
+  {
     device->pw_core.link_l =
         create_pw_link(global_manager.pw_manager.core, device->device_id,
                        NULL, engine_target, port_name_l);
@@ -434,26 +490,30 @@ void device_link(struct DeviceCore *device) {
       create_pw_link(global_manager.pw_manager.core, device->device_id,
                      src_port_r, engine_target, port_name_r);
 
-  if (device->pw_core.link_r == NULL && src_port_l[0] != '\0') {
+  if (device->pw_core.link_r == NULL && src_port_l[0] != '\0')
+  {
     device->pw_core.link_r =
         create_pw_link(global_manager.pw_manager.core, device->device_id,
                        src_port_l, engine_target, port_name_r);
   }
-  if (device->pw_core.link_r == NULL) {
+  if (device->pw_core.link_r == NULL)
+  {
     char alt_port[64];
     snprintf(alt_port, sizeof(alt_port), "%s_MONO", prefix);
     device->pw_core.link_r =
         create_pw_link(global_manager.pw_manager.core, device->device_id,
                        alt_port, engine_target, port_name_r);
   }
-  if (device->pw_core.link_r == NULL) {
+  if (device->pw_core.link_r == NULL)
+  {
     char alt_port[64];
     snprintf(alt_port, sizeof(alt_port), "%s_2", prefix);
     device->pw_core.link_r =
         create_pw_link(global_manager.pw_manager.core, device->device_id,
                        alt_port, engine_target, port_name_r);
   }
-  if (device->pw_core.link_r == NULL) {
+  if (device->pw_core.link_r == NULL)
+  {
     device->pw_core.link_r =
         create_pw_link(global_manager.pw_manager.core, device->device_id,
                        NULL, engine_target, port_name_r);
@@ -462,17 +522,20 @@ void device_link(struct DeviceCore *device) {
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 }
 
-void device_unlink(struct DeviceCore *device) {
+void device_unlink(struct DeviceCore *device)
+{
   if (device == NULL)
     return;
 
   pw_thread_loop_lock(global_manager.pw_manager.threaded_loop);
 
-  if (device->pw_core.link_l != NULL) {
+  if (device->pw_core.link_l != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_l);
     device->pw_core.link_l = NULL;
   }
-  if (device->pw_core.link_r != NULL) {
+  if (device->pw_core.link_r != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_r);
     device->pw_core.link_r = NULL;
   }
@@ -483,7 +546,8 @@ void device_unlink(struct DeviceCore *device) {
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 }
 
-int device_reassign(struct DeviceCore *device, const char *new_device_id) {
+int device_reassign(struct DeviceCore *device, const char *new_device_id)
+{
   if (device == NULL || new_device_id == NULL)
     return -1;
 
@@ -498,20 +562,23 @@ int device_reassign(struct DeviceCore *device, const char *new_device_id) {
   return 0;
 }
 
-int device_get_dB(struct DeviceCore *device) {
+int device_get_dB(struct DeviceCore *device)
+{
   if (device == NULL)
     return -1;
   return device->dB;
 }
 
-int device_set_dB(struct DeviceCore *device, int dB) {
+int device_set_dB(struct DeviceCore *device, int dB)
+{
   if (device == NULL)
     return -1;
   device->dB = dB;
   return 0;
 }
 
-int device_set_gain_from_db(struct DeviceCore *device, float db) {
+int device_set_gain_from_db(struct DeviceCore *device, float db)
+{
   if (device == NULL)
     return -1;
 
@@ -527,7 +594,8 @@ int device_set_gain_from_db(struct DeviceCore *device, float db) {
   return 0;
 }
 
-int device_set_bass_gain(struct DeviceCore *device, float db) {
+int device_set_bass_gain(struct DeviceCore *device, float db)
+{
   if (device == NULL)
     return -1;
 
@@ -541,7 +609,8 @@ int device_set_bass_gain(struct DeviceCore *device, float db) {
   return r;
 }
 
-int device_set_mid_gain(struct DeviceCore *device, float db) {
+int device_set_mid_gain(struct DeviceCore *device, float db)
+{
   if (device == NULL)
     return -1;
 
@@ -552,7 +621,8 @@ int device_set_mid_gain(struct DeviceCore *device, float db) {
   return update_band(band, RT_FILTER_PEAK, MID_FREQ, 0.0f, 0.75f, db, 48000.0f);
 }
 
-int device_set_treble_gain(struct DeviceCore *device, float db) {
+int device_set_treble_gain(struct DeviceCore *device, float db)
+{
   if (device == NULL)
     return -1;
 
@@ -564,7 +634,8 @@ int device_set_treble_gain(struct DeviceCore *device, float db) {
                      48000.0f);
 }
 
-int device_set_mono(struct DeviceCore *device, bool is_mono) {
+int device_set_mono(struct DeviceCore *device, bool is_mono)
+{
   if (device == NULL)
     return -1;
 
@@ -572,14 +643,17 @@ int device_set_mono(struct DeviceCore *device, bool is_mono) {
   return 0;
 }
 
-int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
+int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink)
+{
   if (device == NULL || sink == NULL)
     return -1;
 
   // Check if sink is already bridged to prevent duplicate routes (which
   // multiplies the volume)
-  for (int i = 0; i < device->bridged_sinks_count; i++) {
-    if (device->bridged_sinks[i] == sink) {
+  for (int i = 0; i < device->bridged_sinks_count; i++)
+  {
+    if (device->bridged_sinks[i] == sink)
+    {
       return 0; // Already bridged, do nothing
     }
   }
@@ -593,20 +667,26 @@ int device_set_bridged_sink(struct DeviceCore *device, struct SinkCore *sink) {
 }
 
 int device_remove_bridged_sink(struct DeviceCore *device,
-                               struct SinkCore *sink) {
+                               struct SinkCore *sink)
+{
   if (device == NULL || sink == NULL)
     return -1;
 
   int removed = 0;
-  for (int i = 0; i < device->bridged_sinks_count;) {
-    if (device->bridged_sinks[i] == sink) {
-      for (int j = i; j < device->bridged_sinks_count - 1; j++) {
+  for (int i = 0; i < device->bridged_sinks_count;)
+  {
+    if (device->bridged_sinks[i] == sink)
+    {
+      for (int j = i; j < device->bridged_sinks_count - 1; j++)
+      {
         device->bridged_sinks[j] = device->bridged_sinks[j + 1];
       }
       device->bridged_sinks[device->bridged_sinks_count - 1] = NULL;
       device->bridged_sinks_count--;
       removed++;
-    } else {
+    }
+    else
+    {
       i++;
     }
   }
@@ -614,7 +694,8 @@ int device_remove_bridged_sink(struct DeviceCore *device,
   return removed > 0 ? 0 : -1;
 }
 
-int sink_delete(struct SinkCore *sink) {
+int sink_delete(struct SinkCore *sink)
+{
   if (sink == NULL)
     return -1;
 
@@ -622,15 +703,19 @@ int sink_delete(struct SinkCore *sink) {
 
   // 1. Remove sink from global_manager.sinks array FIRST inside lock
   int found_idx = -1;
-  for (int i = 0; i < global_manager.sinks_count; i++) {
-    if (global_manager.sinks[i] == sink) {
+  for (int i = 0; i < global_manager.sinks_count; i++)
+  {
+    if (global_manager.sinks[i] == sink)
+    {
       found_idx = i;
       break;
     }
   }
 
-  if (found_idx != -1) {
-    for (int i = found_idx; i < global_manager.sinks_count - 1; i++) {
+  if (found_idx != -1)
+  {
+    for (int i = found_idx; i < global_manager.sinks_count - 1; i++)
+    {
       global_manager.sinks[i] = global_manager.sinks[i + 1];
     }
     global_manager.sinks[global_manager.sinks_count - 1] = NULL;
@@ -643,9 +728,11 @@ int sink_delete(struct SinkCore *sink) {
   pw_thread_loop_unlock(global_manager.pw_manager.threaded_loop);
 
   // 3. Remove sink reference from all device bridged_sinks lists
-  for (int d = 0; d < global_manager.devices_count; d++) {
+  for (int d = 0; d < global_manager.devices_count; d++)
+  {
     struct DeviceCore *dev = global_manager.devices[d];
-    if (dev != NULL) {
+    if (dev != NULL)
+    {
       device_remove_bridged_sink(dev, sink);
     }
   }
@@ -655,7 +742,8 @@ int sink_delete(struct SinkCore *sink) {
   return 0;
 }
 
-int device_delete(struct DeviceCore *device) {
+int device_delete(struct DeviceCore *device)
+{
   if (device == NULL)
     return -1;
 
@@ -664,15 +752,19 @@ int device_delete(struct DeviceCore *device) {
 
   // 2. Remove device from global_manager.devices array FIRST inside lock
   int found_idx = -1;
-  for (int i = 0; i < global_manager.devices_count; i++) {
-    if (global_manager.devices[i] == device) {
+  for (int i = 0; i < global_manager.devices_count; i++)
+  {
+    if (global_manager.devices[i] == device)
+    {
       found_idx = i;
       break;
     }
   }
 
-  if (found_idx != -1) {
-    for (int i = 0; i < global_manager.devices_count - 1; i++) {
+  if (found_idx != -1)
+  {
+    for (int i = 0; i < global_manager.devices_count - 1; i++)
+    {
       global_manager.devices[i] = global_manager.devices[i + 1];
     }
     global_manager.devices[global_manager.devices_count - 1] = NULL;
@@ -680,21 +772,25 @@ int device_delete(struct DeviceCore *device) {
   }
 
   // 3. Destroy links
-  if (device->pw_core.link_l != NULL) {
+  if (device->pw_core.link_l != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_l);
     device->pw_core.link_l = NULL;
   }
-  if (device->pw_core.link_r != NULL) {
+  if (device->pw_core.link_r != NULL)
+  {
     pw_proxy_destroy((struct pw_proxy *)device->pw_core.link_r);
     device->pw_core.link_r = NULL;
   }
 
   // 4. Remove ports from filter
-  if (device->pw_core.port_l != NULL) {
+  if (device->pw_core.port_l != NULL)
+  {
     pw_filter_remove_port(device->pw_core.port_l);
     device->pw_core.port_l = NULL;
   }
-  if (device->pw_core.port_r != NULL) {
+  if (device->pw_core.port_r != NULL)
+  {
     pw_filter_remove_port(device->pw_core.port_r);
     device->pw_core.port_r = NULL;
   }
@@ -716,5 +812,13 @@ int device_delete(struct DeviceCore *device) {
 
   free(device);
   return 0;
+}
+
+void device_set_lv2_manager(struct DeviceCore *device, struct Lv2Manager *lv2_manager)
+{
+  if (device == NULL)
+    return;
+
+  device->eq.lv2_manager = lv2_manager;
 }
 // END DEVICE CLASS

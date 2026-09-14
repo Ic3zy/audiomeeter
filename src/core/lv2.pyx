@@ -77,6 +77,11 @@ cdef class Lv2Chain:
         if not self._alive or self._ptr == NULL:
             raise RuntimeError("This Lv2Chain instance has already been destroyed")
 
+    @property
+    def ptr_val(self) -> size_t:
+        self._check()
+        return <size_t>self._ptr
+
     def destroy(self):
         """Explicitly frees C memory allocated for Lv2Manager without holding GIL."""
         cdef Lv2Manager *ptr = self._ptr

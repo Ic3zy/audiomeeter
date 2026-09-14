@@ -5,8 +5,9 @@ CFLAGS += -O3 -msse4.2 -ffast-math
 PW_CFLAGS = $(shell pkg-config --cflags libpipewire-0.3)
 
 BIQUAD_CFLAGS = -I$(CURDIR)/../rt_biquad/include
+LV2_CFLAGS = -I$(CURDIR)/../lv2-api/src/include
 
-CFLAGS += $(PW_CFLAGS) $(BIQUAD_CFLAGS) -D_REENTRANT
+CFLAGS += $(PW_CFLAGS) $(BIQUAD_CFLAGS) $(LV2_CFLAGS) -D_REENTRANT
 PW_LIBS   = -lpipewire-0.3 -lm
 
 SRC = $(wildcard src/*.c)
