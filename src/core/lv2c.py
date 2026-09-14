@@ -2,9 +2,9 @@ import asyncio
 from . import lv2
 
 
-class _Lv2Core:
+class Lv2Core:
     def __init__(self):
-        self.lv2_manager: lv2.Lv2Chain = None
+        self.lv2_manager = None
         self.lv2_plugin_available_list = None
 
         self.selected_plugins: dict = None
@@ -40,5 +40,26 @@ class _Lv2Core:
         else:
             callback(self.lv2_plugin_available_list)
 
+    def add_plugin(self, plugin_info):
+        if self.lv2_manager is None:
+            raise ValueError("Lv2Core not initialized.")
 
-Lv2Core = _Lv2Core()
+        return self.lv2_manager.add_filter(plugin_info["uri"])
+
+    def get_info(self, plugin_index):
+        if self.lv2_manager is None:
+            raise ValueError("Lv2Core not initialized.")
+
+        return self.lv2_manager.get_filter_info(plugin_index)
+
+    def set_param(self, plugin_index, symbol, value):
+        if self.lv2_manager is None:
+            raise ValueError("Lv2Core not initialized.")
+
+        return self.lv2_manager.set_param(plugin_index, symbol, value)
+
+    def get_param(self, plugin_index, symbol):
+        if self.lv2_manager is None:
+            raise ValueError("Lv2Core not initialized.")
+
+        return self.lv2_manager.get_param(plugin_index, symbol)

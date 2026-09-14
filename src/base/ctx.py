@@ -133,6 +133,8 @@ class ctx:
             self.load_from_file(saved_ctx_path)
             print(f"config: {self.to_json_string()}")
 
+        self["ctx_init"] = 1
+
     def on_quit(self):
         self.save_to_file(get_config_path())
 

@@ -8,13 +8,15 @@ target = None
 print(plugins)
 
 for pl in plugins:
-    if pl["uri"] == "https://github.com/lucianodato/noise-repellent#adaptive":
+    if pl["uri"] == "http://kxstudio.sf.net/carla/plugins/lfo":
         target = pl
         break
 
 if target is None:
     print("Error, target None.")
     exit()
+
+print("FOUND TARGET", target)
 
 filter_idx = chain.add_filter(target["uri"])
 

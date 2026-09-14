@@ -13,3 +13,4 @@ packaging/src/
 packaging/audiomeeter/
 *.pkg.tar.zst
 *.deb
+src/core/*.c

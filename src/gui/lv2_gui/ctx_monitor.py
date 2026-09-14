@@ -1,4 +1,6 @@
 from base import Ctx
+from core import Lv2Core
+import asyncio
 
 _CTX_NAMES = [
     "Lv2_H_in_A1",
@@ -45,11 +47,13 @@ def get_device_names():
 
 
 def device_name_to_ctx_name(d_name):
-    name = DEVICE_TO_CTX[d_name]
+    name = DEVICE_TO_CTX.get(d_name, d_name)
     return f"Lv2Device_{name}"
 
 
 def device_id_to_ctx_name(d_id):
+    if d_id in DEVICE_TO_CTX:
+        d_id = DEVICE_TO_CTX[d_id]
     return f"Lv2Device_{d_id}"
 
 
@@ -59,15 +63,6 @@ def get_plugins_from_ctx_name(name):
 
 def get_plugins_from_device_name(name):
     ctx_name = device_name_to_ctx_name(name)
-
-    t = {
-        "name": "LSP A/B Tester x8 Stereo",
-        "uri": "http://lsp-plug.in/plugins/lv2/ab_tester_x8_stereo",
-        "category": "Utility Plugin",
-    }
-
-    # add_plugin_to_device_from_device_name(name, t)
-
     return get_plugins_from_ctx_name(ctx_name) or []
 
 
@@ -79,7 +74,6 @@ def get_last_plugin_id_from_device_name(name):
     while Ctx.get(f"{ctx_name}_pl_s_{c}") is not None:
         if c > last_id:
             last_id = c
-
         c += 1
 
     return last_id
@@ -92,7 +86,98 @@ def add_plugin_to_device_from_device_name(name, plugin):
     else:
         Ctx.get(f"{ctx_name}_plugins").append(plugin)
 
+    core = Ctx.get(f"{ctx_name}_core")
+    if core is None:
+        core = Lv2Core()
+        Ctx[f"{ctx_name}_core"] = core
+
+    if core.is_initialized:
+        core.add_plugin(plugin)
+    else:
+        asyncio.create_task(
+            core.get_available_plugins(lambda l: core.add_plugin(plugin))
+        )
+
+
+def delete_plugin_from_device_name(name, plugin):
+    ctx_name = device_name_to_ctx_name(name)
+    plugins = Ctx.get(f"{ctx_name}_plugins")
+    if not plugins:
+        return
+
+    if plugin in plugins:
+        plugins.remove(plugin)
+
+
+def get_plugin_index_from_plugin(device_name, plugin):
+    ctx_name = device_name_to_ctx_name(device_name)
+    plugins = Ctx.get(f"{ctx_name}_plugins") or []
+    for c, pl in enumerate(plugins):
+        if isinstance(pl, dict) and pl.get("uri") == plugin.get("uri"):
+            return c
+    return None
+
+
+def get_plugin_info(device_name, plugin):
+    ctx_name = device_name_to_ctx_name(device_name)
+    core = Ctx.get(f"{ctx_name}_core")
+    if core is None or not core.is_initialized:
+        raise ValueError("Lv2Core not initialized.")
+
+    index = get_plugin_index_from_plugin(device_name, plugin)
+    if index is None:
+        raise ValueError(f"Plugin not found: {plugin}")
+
+    info = core.get_info(index)
+    return info
+
 
 def save_callback_all_devices(callback):
     for name in get_ctx_names():
         Ctx.add_callback(f"{device_id_to_ctx_name(name)}_plugins", callback)
+
+
+def get_available_plugins_for_callback(name, callback):
+    ctx_name = device_name_to_ctx_name(name)
+    core = Ctx.get(f"{ctx_name}_core")
+    if core is None:
+        core = Lv2Core()
+        Ctx[f"{ctx_name}_core"] = core
+        asyncio.create_task(core.get_available_plugins(callback))
+    else:
+        core.get_available_plugins_for_callback(callback)
+
+
+def add_plugins_to_device_from_core(core, plugins):
+    for plugin in plugins:
+        core.add_plugin(plugin)
+
+
+def init_lv2():
+    top_plugins = {}
+    for name in get_ctx_names():
+        ctx_key = device_id_to_ctx_name(name)
+        plugins = Ctx.get(f"{ctx_key}_plugins")
+        if plugins:
+            top_plugins[name] = plugins
+
+    if not top_plugins:
+        print("No plugins found.")
+        return
+
+    async def _async_init_all():
+        for name, plugins in top_plugins.items():
+            ctx_key = device_id_to_ctx_name(name)
+            core = Ctx.get(f"{ctx_key}_core")
+            if core is None:
+                core = Lv2Core()
+                Ctx[f"{ctx_key}_core"] = core
+            if not core.is_initialized:
+                await core.get_available_plugins()
+            add_plugins_to_device_from_core(core, plugins)
+
+    asyncio.create_task(_async_init_all())
+
+
+# TODO: optimize
+Ctx.add_callback("ctx_init", init_lv2)

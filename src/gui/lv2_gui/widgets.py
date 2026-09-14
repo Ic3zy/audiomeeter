@@ -69,18 +69,17 @@ class Lv2ParamSlider(QSlider):
 class Lv2ParamWidget:
     def __init__(self, param_info):
         self.param_info = param_info
+        print(f"Ayarlar tıklandı: {self.param_info}")
         self.param_name = param_info["name"]
-        self.param_symbol = param_info["symbol"]
         self.param_min = param_info["min_val"]
         self.param_max = param_info["max_val"]
         self.param_default = param_info["default_val"]
         self.param_current = param_info["current_val"]
         self.is_toggle = param_info["is_toggle"]
 
+        self.value_changed_callbacks = []
         self.widget = None
         self.init_widget()
-
-        self.value_changed_callbacks = []
 
     def add_value_changed_callback(self, callback):
         if callback in self.value_changed_callbacks:
@@ -158,6 +157,26 @@ class Lv2ParamWidget:
 
         for callback in self.value_changed_callbacks:
             callback(value)
+
+
+class Lv2ParamContainer(QWidget):
+    def __init__(self, param_info):
+        super().__init__()
+        self.param_info = param_info
+        self.params = param_info["params"]
+        self.init_widget()
+
+    def init_widget(self):
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        for param in self.params:
+            param_w = Lv2ParamWidget(param)
+            layout.addWidget(param_w.widget)
+
+        self.setLayout(layout)
 
 
 class Lv2PluginWidget(QWidget):
@@ -299,7 +318,11 @@ class PluginListContainer(QWidget):
             self.content_layout.addWidget(plugin_widget)
 
     def load_plugins(self):
-        Lv2Core.get_available_plugins_for_callback(self.set_plugins)
+        selected_device = Ctx.active_menu_device
+        if selected_device is None:
+            raise ValueError("No active device selected.")
+
+        CtxMonitor.get_available_plugins_for_callback(selected_device, self.set_plugins)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -315,12 +338,9 @@ class PluginListContainer(QWidget):
     def cancel_clicked(self):
         if self.cancel_button_callback is not None:
             self.cancel_button_callback()
-
         print("Cancel clicked")
 
     def on_select_plugin(self, plugin_widget):
-        print(f"Selected plugin: {plugin_widget.param_name}")
-
         CtxMonitor.add_plugin_to_device_from_device_name(
             Ctx.active_menu_device, plugin_widget.param_info
         )
@@ -789,10 +809,18 @@ class ActivePluginWidget(QWidget):
         """)
 
     def on_settings_clicked(self):
-        print(f"Ayarlar tıklandı: {self.param_name}")
+        pl_info = CtxMonitor.get_plugin_info(Ctx.active_menu_device, self.param_info)
+        param_w = Lv2ParamContainer(pl_info)
+        if instance := GeneralContainer.get():
+            instance.clear()
+            instance.add(param_w)
+        else:
+            print("GeneralContainer instance not found", file=sys.stderr)
 
     def on_delete_clicked(self):
-        print(f"Sil tıklandı: {self.param_name}")
+        CtxMonitor.delete_plugin_from_device_name(
+            Ctx.active_menu_device, self.param_info
+        )
 
     def start_drag(self):
         drop_area = self.parent()
