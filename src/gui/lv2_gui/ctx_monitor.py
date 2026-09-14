@@ -181,6 +181,19 @@ def get_plugin_info(device_name, plugin):
     return info
 
 
+def update_info_from_plugin(device_name, plugin, key, value):
+    ctx_name = device_name_to_ctx_name(device_name)
+    core = Ctx.get(f"{ctx_name}_core")
+    if core is None or not core.is_initialized:
+        raise ValueError("Lv2Core not initialized.")
+
+    index = get_plugin_index_from_plugin(device_name, plugin)
+    if index is None:
+        raise ValueError(f"Plugin not found: {plugin}")
+
+    core.set_param(index, key, value)
+
+
 def save_callback_all_devices(callback):
     for name in get_ctx_names():
         Ctx.add_callback(f"{device_id_to_ctx_name(name)}_plugins", callback)

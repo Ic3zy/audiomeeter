@@ -39,42 +39,72 @@ colors = {
 
 
 class Lv2ParamSlider(QSlider):
-    def __init__(self, param_widget, min_val, max_val, default_val):
+    def __init__(self, param_widget, min_val, max_val, default_val, current_val):
         super().__init__(Qt.Orientation.Horizontal)
         self.param_widget = param_widget
-        if isinstance(default_val, float):
-            default_val = int(default_val)
+        self.min_val = float(min_val)
+        self.max_val = float(max_val)
+        self.default_val = float(default_val)
 
-        self.default_val = default_val
+        range_span = abs(self.max_val - self.min_val)
+        self.steps = (
+            1000
+            if range_span <= 10.0 or int(range_span) != range_span
+            else int(max(range_span, 1))
+        )
 
         self.setFixedHeight(30)
         self.setFixedWidth(200)
 
-        self.setMinimum(int(min_val))
-        self.setMaximum(int(max_val))
-        self.setValue(int(default_val))
+        self.setMinimum(0)
+        self.setMaximum(self.steps)
 
-    def setValue(self, value):
-        super().setValue(value)
+        self.set_real_value(float(current_val))
+        self.valueChanged.connect(self._on_slider_moved)
+
+    def real_to_slider(self, real_val):
+        if self.max_val == self.min_val:
+            return 0
+        ratio = (real_val - self.min_val) / (self.max_val - self.min_val)
+        ratio = max(0.0, min(1.0, ratio))
+        return int(round(ratio * self.steps))
+
+    def slider_to_real(self, int_val):
+        ratio = int_val / float(self.steps) if self.steps > 0 else 0.0
+        val = self.min_val + ratio * (self.max_val - self.min_val)
+        return max(self.min_val, min(self.max_val, val))
+
+    def set_real_value(self, real_val):
+        int_val = self.real_to_slider(real_val)
+        self.blockSignals(True)
+        super().setValue(int_val)
+        self.blockSignals(False)
+
+    def _on_slider_moved(self, int_val):
+        real_val = self.slider_to_real(int_val)
         if hasattr(self, "param_widget") and self.param_widget:
-            self.param_widget.set_value(value)
+            self.param_widget.set_value(real_val)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.setValue(self.default_val)
+            self.set_real_value(self.default_val)
+            if hasattr(self, "param_widget") and self.param_widget:
+                self.param_widget.set_value(self.default_val)
         else:
             super().mouseDoubleClickEvent(event)
 
 
 class Lv2ParamWidget:
-    def __init__(self, param_info):
+    def __init__(self, param_info, plugin):
         self.param_info = param_info
+        self.plugin = plugin
         print(f"Ayarlar tıklandı: {self.param_info}")
         self.param_name = param_info["name"]
-        self.param_min = param_info["min_val"]
-        self.param_max = param_info["max_val"]
-        self.param_default = param_info["default_val"]
-        self.param_current = param_info["current_val"]
+        self.param_symbol = param_info.get("symbol", self.param_name)
+        self.param_min = float(param_info["min_val"])
+        self.param_max = float(param_info["max_val"])
+        self.param_default = float(param_info["default_val"])
+        self.param_current = float(param_info["current_val"])
         self.is_toggle = param_info["is_toggle"]
 
         self.value_changed_callbacks = []
@@ -95,21 +125,19 @@ class Lv2ParamWidget:
 
     def init_toggle(self):
         self.name_label = QLabel(self.param_name)
-        self.value_label = QLabel(f"{self.param_current}")
+        self.value_label = QLabel("ON" if self.param_current >= 0.5 else "OFF")
         self.toggle = QCheckBox()
 
-        self.toggle.setChecked(int(self.param_current))
-        self.toggle.stateChanged.connect(lambda state: self.set_value(state))
+        self.toggle.setChecked(bool(self.param_current >= 0.5))
+        self.toggle.stateChanged.connect(
+            lambda state: self.set_value(1.0 if state == 2 or state == True else 0.0)
+        )
 
         layout = QVBoxLayout()
-
         layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
-
         layout.addWidget(self.name_label)
-
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
         layout.addWidget(self.toggle)
 
         self.widget = QWidget()
@@ -119,30 +147,28 @@ class Lv2ParamWidget:
         mins = self.param_min
         maxs = self.param_max
         default = self.param_default
+        current = self.param_current
 
         self.name_label = QLabel(self.param_name)
-        self.value_label = QLabel(f"{self.param_current:0.0f}")
-        self.slider = Lv2ParamSlider(self, mins, maxs, default)
+        if abs(maxs - mins) <= 10.0:
+            self.value_label = QLabel(f"{current:.2f}")
+        else:
+            self.value_label = QLabel(f"{current:.1f}")
 
-        self.slider.valueChanged.connect(lambda v: self.set_value(f"{v}"))
+        self.slider = Lv2ParamSlider(self, mins, maxs, default, current)
 
         h_layout = QHBoxLayout()
-
         layout = QVBoxLayout()
 
         layout.setSpacing(2)
         layout.setContentsMargins(0, 0, 0, 0)
-
         layout.addWidget(self.name_label)
-
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         h_layout.addWidget(self.slider)
         h_layout.addWidget(self.value_label)
-
         h_layout.setSpacing(8)
         h_layout.setContentsMargins(0, 0, 0, 0)
-
         h_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         layout.addLayout(h_layout)
@@ -151,51 +177,67 @@ class Lv2ParamWidget:
         self.widget.setLayout(layout)
 
     def set_value(self, value):
-        self.param_current = value
-        print(f"[{self.param_name}] Yeni Değer: {value}")
-        self.value_label.setText(f"{value}")
+        val_float = float(value)
+        self.param_current = val_float
+        print(f"[{self.param_name}] ({self.param_symbol}) Yeni Değer: {val_float}")
+
+        if self.is_toggle:
+            self.value_label.setText("ON" if val_float >= 0.5 else "OFF")
+        else:
+            if abs(self.param_max - self.param_min) <= 10.0:
+                self.value_label.setText(f"{val_float:.2f}")
+            else:
+                self.value_label.setText(f"{val_float:.1f}")
+
+        CtxMonitor.update_info_from_plugin(
+            Ctx.active_menu_device, self.plugin, self.param_symbol, val_float
+        )
 
         for callback in self.value_changed_callbacks:
-            callback(value)
+            callback(val_float)
 
 
 class Lv2ParamContainer(QWidget):
     def __init__(self, param_info):
         super().__init__()
+
         self.param_info = param_info
         self.params = param_info["params"]
 
         self.setAttribute(Qt.WA_StyledBackground, True)
+
+        # Scroll içeriği
+        self.param_widget = QWidget()
+        self.param_layout = QVBoxLayout(self.param_widget)
+
+        self.param_layout.setSpacing(8)
+        self.param_layout.setContentsMargins(0, 0, 0, 0)
+
+        for param in self.params:
+            param_w = Lv2ParamWidget(param, self.param_info)
+            self.param_layout.addWidget(param_w.widget)
+
+        self.scroll = QScrollArea(self)
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setWidget(self.param_widget)
+
+        # Ana layout
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
-
-        for param in self.params:
-            param_w = Lv2ParamWidget(param)
-            layout.addWidget(param_w.widget)
-
-        self.setLayout(layout)
+        layout.addWidget(self.scroll)
 
         self.cancel_button = CancelButton(self, text="Apply")
         self.cancel_button.clicked.connect(self.cancel_clicked)
 
-        self.cancel_button.move(
-            self.width() - self.cancel_button.width() - 10,
-            self.height() - self.cancel_button.height() - 10,
+        layout.addWidget(
+            self.cancel_button,
+            alignment=Qt.AlignmentFlag.AlignRight,
         )
 
     def cancel_clicked(self):
         if instance := GeneralContainer.get():
             instance.restore()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        print("resizeEvent")
-
-        self.cancel_button.move(
-            self.width() - self.cancel_button.width() - 10,
-            self.height() - self.cancel_button.height() - 10,
-        )
 
 
 class Lv2PluginWidget(QWidget):
