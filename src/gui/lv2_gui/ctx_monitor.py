@@ -148,14 +148,22 @@ def add_plugin_to_device_from_device_name(name, plugin):
         asyncio.create_task(core.get_available_plugins(_on_init))
 
 
-def delete_plugin_from_device_name(name, plugin):
+def delete_plugin_by_index(name, index):
     ctx_name = device_name_to_ctx_name(name)
     plugins = Ctx.get(f"{ctx_name}_plugins")
-    if not plugins:
+    if not plugins or index < 0 or index >= len(plugins):
         return
 
-    if plugin in plugins:
-        plugins.remove(plugin)
+    plugins.pop(index)
+    core = Ctx.get(f"{ctx_name}_core")
+    if core and core.is_initialized:
+        core.remove_plugin(index)
+
+
+def delete_plugin_from_device_name(name, plugin):
+    index = get_plugin_index_from_plugin(name, plugin)
+    if index is not None:
+        delete_plugin_by_index(name, index)
 
 
 def get_plugin_index_from_plugin(device_name, plugin):
@@ -167,31 +175,52 @@ def get_plugin_index_from_plugin(device_name, plugin):
     return None
 
 
-def get_plugin_info(device_name, plugin):
+def get_plugin_info_by_index(device_name, index):
     ctx_name = device_name_to_ctx_name(device_name)
     core = Ctx.get(f"{ctx_name}_core")
     if core is None or not core.is_initialized:
         raise ValueError("Lv2Core not initialized.")
 
+    return core.get_info(index)
+
+
+def get_plugin_info(device_name, plugin):
     index = get_plugin_index_from_plugin(device_name, plugin)
     if index is None:
         raise ValueError(f"Plugin not found: {plugin}")
 
-    info = core.get_info(index)
-    return info
+    return get_plugin_info_by_index(device_name, index)
+
+
+def update_info_from_plugin_by_index(device_name, index, key, value):
+    ctx_name = device_name_to_ctx_name(device_name)
+    core = Ctx.get(f"{ctx_name}_core")
+    if core is None or not core.is_initialized:
+        raise ValueError("Lv2Core not initialized.")
+
+    core.set_param(index, key, value)
 
 
 def update_info_from_plugin(device_name, plugin, key, value):
-    ctx_name = device_name_to_ctx_name(device_name)
-    core = Ctx.get(f"{ctx_name}_core")
-    if core is None or not core.is_initialized:
-        raise ValueError("Lv2Core not initialized.")
-
     index = get_plugin_index_from_plugin(device_name, plugin)
     if index is None:
         raise ValueError(f"Plugin not found: {plugin}")
 
-    core.set_param(index, key, value)
+    update_info_from_plugin_by_index(device_name, index, key, value)
+
+
+def reorder_plugins(device_name, old_index, new_index):
+    ctx_name = device_name_to_ctx_name(device_name)
+    plugins = Ctx.get(f"{ctx_name}_plugins")
+    if not plugins or old_index == new_index or old_index < 0 or old_index >= len(plugins) or new_index < 0 or new_index >= len(plugins):
+        return
+
+    item = plugins.pop(old_index)
+    plugins.insert(new_index, item)
+
+    core = Ctx.get(f"{ctx_name}_core")
+    if core and core.is_initialized:
+        core.move_plugin(old_index, new_index)
 
 
 def save_callback_all_devices(callback):

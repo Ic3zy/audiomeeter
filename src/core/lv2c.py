@@ -63,3 +63,15 @@ class Lv2Core:
             raise ValueError("Lv2Core not initialized.")
 
         return self.lv2_manager.get_param(plugin_index, symbol)
+
+    def remove_plugin(self, plugin_index):
+        if self.lv2_manager is None:
+            raise ValueError("Lv2Core not initialized.")
+
+        return self.lv2_manager.remove_filter(plugin_index)
+
+    def move_plugin(self, old_index, new_index):
+        if self.lv2_manager is None:
+            raise ValueError("Lv2Core not initialized.")
+
+        return self.lv2_manager.move_filter(old_index, new_index)

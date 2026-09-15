@@ -95,10 +95,11 @@ class Lv2ParamSlider(QSlider):
 
 
 class Lv2ParamWidget:
-    def __init__(self, param_info, plugin):
+    def __init__(self, param_info, plugin, plugin_index=0):
         self.param_info = param_info
         self.plugin = plugin
-        print(f"Ayarlar tıklandı: {self.param_info}")
+        self.plugin_index = plugin_index
+        print(f"Ayarlar tıklandı: {self.param_info} [index={plugin_index}]")
         self.param_name = param_info["name"]
         self.param_symbol = param_info.get("symbol", self.param_name)
         self.param_min = float(param_info["min_val"])
@@ -129,9 +130,7 @@ class Lv2ParamWidget:
         self.toggle = QCheckBox()
 
         self.toggle.setChecked(bool(self.param_current >= 0.5))
-        self.toggle.stateChanged.connect(
-            lambda state: self.set_value(1.0 if state == 2 or state == True else 0.0)
-        )
+        self.toggle.stateChanged.connect(lambda state: self.set_value(1.0 if state == 2 or state == True else 0.0))
 
         layout = QVBoxLayout()
         layout.setSpacing(8)
@@ -179,7 +178,7 @@ class Lv2ParamWidget:
     def set_value(self, value):
         val_float = float(value)
         self.param_current = val_float
-        print(f"[{self.param_name}] ({self.param_symbol}) Yeni Değer: {val_float}")
+        print(f"[{self.param_name}] ({self.param_symbol}) Yeni Değer: {val_float} [index={self.plugin_index}]")
 
         if self.is_toggle:
             self.value_label.setText("ON" if val_float >= 0.5 else "OFF")
@@ -189,8 +188,8 @@ class Lv2ParamWidget:
             else:
                 self.value_label.setText(f"{val_float:.1f}")
 
-        CtxMonitor.update_info_from_plugin(
-            Ctx.active_menu_device, self.plugin, self.param_symbol, val_float
+        CtxMonitor.update_info_from_plugin_by_index(
+            Ctx.active_menu_device, self.plugin_index, self.param_symbol, val_float
         )
 
         for callback in self.value_changed_callbacks:
@@ -198,10 +197,11 @@ class Lv2ParamWidget:
 
 
 class Lv2ParamContainer(QWidget):
-    def __init__(self, param_info):
+    def __init__(self, param_info, plugin_index=0):
         super().__init__()
 
         self.param_info = param_info
+        self.plugin_index = plugin_index
         self.params = param_info["params"]
 
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -214,7 +214,7 @@ class Lv2ParamContainer(QWidget):
         self.param_layout.setContentsMargins(0, 0, 0, 0)
 
         for param in self.params:
-            param_w = Lv2ParamWidget(param, self.param_info)
+            param_w = Lv2ParamWidget(param, self.param_info, plugin_index=self.plugin_index)
             self.param_layout.addWidget(param_w.widget)
 
         self.scroll = QScrollArea(self)
@@ -770,9 +770,10 @@ class DragHandle(QLabel):
 
 
 class ActivePluginWidget(QWidget):
-    def __init__(self, param_info):
+    def __init__(self, param_info, index=0):
         super().__init__()
         self.param_info = param_info
+        self.index = index
         self.param_name = param_info["name"]
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.init_widget()
@@ -870,8 +871,8 @@ class ActivePluginWidget(QWidget):
         """)
 
     def on_settings_clicked(self):
-        pl_info = CtxMonitor.get_plugin_info(Ctx.active_menu_device, self.param_info)
-        param_w = Lv2ParamContainer(pl_info)
+        pl_info = CtxMonitor.get_plugin_info_by_index(Ctx.active_menu_device, self.index)
+        param_w = Lv2ParamContainer(pl_info, plugin_index=self.index)
         if instance := GeneralContainer.get():
             instance.clear()
             instance.add(param_w)
@@ -879,8 +880,8 @@ class ActivePluginWidget(QWidget):
             print("GeneralContainer instance not found", file=sys.stderr)
 
     def on_delete_clicked(self):
-        CtxMonitor.delete_plugin_from_device_name(
-            Ctx.active_menu_device, self.param_info
+        CtxMonitor.delete_plugin_by_index(
+            Ctx.active_menu_device, self.index
         )
 
     def start_drag(self):
@@ -889,7 +890,7 @@ class ActivePluginWidget(QWidget):
             return
 
         mime = QMimeData()
-        mime.setText(self.param_name)
+        mime.setText(str(self.index))
 
         drag = QDrag(self)
         drag.setMimeData(mime)
@@ -907,7 +908,7 @@ class ActivePluginWidget(QWidget):
 
         self.hide()
 
-        drop_area.start_reorder(self.param_name)
+        drop_area.start_reorder(self.index)
         drag.exec(Qt.MoveAction)
         drop_area.end_reorder()
 
@@ -928,7 +929,7 @@ class PluginDropArea(QWidget):
         self.layout_.setContentsMargins(20, 16, 20, 16)
         self.layout_.setAlignment(Qt.AlignTop)
 
-        self.plugin_widgets = {}
+        self.plugin_widgets = []
         self._pending_index = None
 
         self._indicator = QFrame(self)
@@ -940,52 +941,42 @@ class PluginDropArea(QWidget):
         self._indicator.hide()
 
     def clear_plugins(self):
-        for pw in list(self.plugin_widgets.values()):
-            self.layout_.removeWidget(pw)
-            pw.setParent(None)
-            pw.deleteLater()
+        while self.layout_.count() > 0:
+            item = self.layout_.takeAt(0)
+            w = item.widget()
+            if w is not None and w != self._indicator:
+                w.setParent(None)
+                w.deleteLater()
 
-        self.plugin_widgets.clear()
+        self.plugin_widgets = []
 
     def set_plugins(self, plugin_infos):
+        self.clear_plugins()
         if plugin_infos is None:
             return
 
-        self.clear_plugins()
+        for idx, info in enumerate(plugin_infos):
+            self.add_plugin(info, index=idx, emit_signal=False)
 
-        for info in plugin_infos:
-            self.add_plugin(info, emit_signal=False)
-
-    def add_plugin(self, param_info, emit_signal=True):
-        pw = ActivePluginWidget(param_info)
+    def add_plugin(self, param_info, index=None, emit_signal=True):
+        if index is None:
+            index = len(self.plugin_widgets)
+        pw = ActivePluginWidget(param_info, index=index)
         pw.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
-        self.plugin_widgets[pw.param_name] = pw
+        self.plugin_widgets.append(pw)
         self.layout_.addWidget(pw)
 
         if emit_signal:
             self.order_changed.emit(self.current_order())
 
-    def remove_plugin(self, param_name):
-        pw = self.plugin_widgets.pop(param_name, None)
-
-        if pw is None:
-            return
-
-        self.layout_.removeWidget(pw)
-
-        pw.setParent(None)
-        pw.deleteLater()
-
-        self.order_changed.emit(self.current_order())
-
     def current_order(self):
-        return list(self.plugin_widgets.keys())
+        return [pw.param_name for pw in self.plugin_widgets]
 
     def is_empty(self):
         return len(self.plugin_widgets) == 0
 
-    def start_reorder(self, param_name):
+    def start_reorder(self, index):
         self._pending_index = None
 
     def end_reorder(self):
@@ -997,31 +988,23 @@ class PluginDropArea(QWidget):
 
     def _visible_plugin_widgets(self):
         result = []
-
         for i in range(self.layout_.count()):
             item = self.layout_.itemAt(i)
             w = item.widget()
-
             if w is not None and isinstance(w, ActivePluginWidget) and w.isVisible():
                 result.append(w)
-
         return result
 
     def _index_for_y(self, y):
         widgets = self._visible_plugin_widgets()
-
         for i, w in enumerate(widgets):
             mid = w.y() + w.height() / 2
             if y < mid:
                 return i
-
         return len(widgets)
 
     def dragEnterEvent(self, event):
-        if (
-            event.mimeData().hasText()
-            and event.mimeData().text() in self.plugin_widgets
-        ):
+        if event.mimeData().hasText():
             event.acceptProposedAction()
             self._indicator.setFixedWidth(self.width() - 40)
             self._indicator.show()
@@ -1029,10 +1012,7 @@ class PluginDropArea(QWidget):
             event.ignore()
 
     def dragMoveEvent(self, event):
-        if not (
-            event.mimeData().hasText()
-            and event.mimeData().text() in self.plugin_widgets
-        ):
+        if not event.mimeData().hasText():
             event.ignore()
             return
 
@@ -1059,9 +1039,9 @@ class PluginDropArea(QWidget):
             event.ignore()
             return
 
-        param_name = event.mimeData().text()
-        pw = self.plugin_widgets.get(param_name)
-        if pw is None:
+        try:
+            old_index = int(event.mimeData().text())
+        except ValueError:
             event.ignore()
             return
 
@@ -1070,25 +1050,10 @@ class PluginDropArea(QWidget):
             event.ignore()
             return
 
-        self.layout_.removeWidget(pw)
-        visible_after_removal = self._visible_plugin_widgets()
-        insert_at = min(target_index, len(visible_after_removal))
-
-        if insert_at >= len(visible_after_removal):
-            self.layout_.addWidget(pw)
-        else:
-            ref_widget = visible_after_removal[insert_at]
-            ref_layout_index = self.layout_.indexOf(ref_widget)
-            self.layout_.insertWidget(ref_layout_index, pw)
-
-        ordered = {}
-        for i in range(self.layout_.count()):
-            w = self.layout_.itemAt(i).widget()
-
-            if isinstance(w, ActivePluginWidget):
-                ordered[w.param_name] = w
-
-        self.plugin_widgets = ordered
+        if old_index != target_index and 0 <= old_index < len(self.plugin_widgets):
+            CtxMonitor.reorder_plugins(Ctx.active_menu_device, old_index, target_index)
+            plugins = CtxMonitor.get_plugins_from_device_name(Ctx.active_menu_device)
+            self.set_plugins(plugins)
 
         self._pending_index = None
         event.acceptProposedAction()
